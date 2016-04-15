@@ -15,11 +15,18 @@ pub static COLOR_BG: Color  = Color::RGB(0,0,0);
 pub static COLOR_FPS: Color = Color::RGB(255,255,0);
 pub static COLOR_PEN: Color = Color::RGB(125, 0, 175);
 
+#[derive(Debug)]
+enum BrushMode {
+    Squareish,
+    WowSoEdgy,
+}
+
 pub struct Engine {
 	context:     sdl2::Sdl,
 	controller:  Input,
 	display:     Display,
 
+    brush:  BrushMode,
     cursor: (i32,i32),
 }
 
@@ -32,6 +39,7 @@ impl Engine {
             controller: Input::new(),
             display:    video_renderer,
 
+            brush:  BrushMode::Squareish,
             cursor: (0,0),
         }
     }
@@ -91,6 +99,14 @@ impl Engine {
                     .ok().expect("did not get target back");
             }
 
+            // switch brush
+            if self.controller.was_key_released(Keycode::B) {
+                self.brush = match self.brush { // TODO: better cycle?
+                    BrushMode::Squareish => BrushMode::WowSoEdgy,
+                    BrushMode::WowSoEdgy => BrushMode::Squareish,
+                }
+            }
+
             if mouse_clicked {
                 let (x2,y2) = self.cursor;
 
@@ -101,8 +117,14 @@ impl Engine {
                     // let diffy = y2 - y1;
                     // println!("delta ({},{}), mag: {}", diffx, diffy, diffy-diffx);
 
-                    for i in 0..10 {
-                        self.display.draw_line(x1+i, y1, x2, y2+i, COLOR_PEN);
+                    match self.brush {
+                        BrushMode::WowSoEdgy => for i in 0..10 {
+                            self.display.draw_line(x1+i, y1, x2, y2+i, COLOR_PEN);
+                        },
+
+                        BrushMode::Squareish => for i in 0..5 {
+                            self.display.draw_line(x1+i, y1, x2+i, y2, COLOR_PEN);
+                        },
                     }
 
                     bitmap = self.display.retarget().reset()
@@ -138,7 +160,7 @@ impl Engine {
         let mut time_ms = time.as_secs() * 1000;        // -> millis
         time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
         
-        let buf = format!("{}ms, e = erase all", time_ms);
+        let buf = format!("{}ms, e = erase all, b = brush ({:?})", time_ms, self.brush);
         self.display.blit_text(&buf[..], COLOR_FPS);
     }
 }
