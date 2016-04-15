@@ -4,11 +4,11 @@ use std::time::Duration;
 use sdl2;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::{Point, Rect};
-use sdl2::render::{self, Renderer, RenderTarget, Texture, TextureAccess};
+use sdl2::render::{Renderer, RenderTarget, Texture, TextureAccess};
 use sdl2_ttf::{self, Font, Sdl2TtfContext};
 
 pub struct Display {
-    text:   Sdl2TtfContext, 
+    _text:   Sdl2TtfContext, 
     font:   Font,  
     screen: Renderer<'static>,
 }
@@ -48,7 +48,7 @@ impl Display {
 
         // strap it to graphics subsystem
         Display {
-            text: textmode,
+            _text: textmode,
             font: opensans,
             screen: renderer,
         }
@@ -76,7 +76,8 @@ impl Display {
         let texture = self.screen.create_texture_from_surface(surface)
             .ok().expect("could blit font to texture");
 
-        self.screen.copy(&texture, None, Some(Rect::new(10, 10, bounds.width(), bounds.height())));
+        let cursor_block = Rect::new(10,10, bounds.width(),bounds.height());
+        self.screen.copy(&texture, None, Some(cursor_block));
 
     }
 
@@ -107,9 +108,10 @@ impl Display {
     }
 
     pub fn fill_rect(&mut self, dst: Rect, fill: Color) {
+        let previous = self.screen.draw_color();
         let _ = self.screen.set_draw_color(fill);
         let _ = self.screen.fill_rect(dst);
-        let _ = self.screen.set_draw_color(Color::RGBA(0,0,0,0)); // TODO: default???
+        let _ = self.screen.set_draw_color(previous);
     }
 
 }

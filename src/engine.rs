@@ -51,11 +51,8 @@ impl Engine {
         let mut last_point = None;
 
         // init bitmap to good state
-        let mut target = 
-            self.display.retarget().set(bitmap.take().unwrap());
-
+        let mut _last = self.display.retarget().set(bitmap.take().unwrap());
         self.display.clear_buffer();
-
         bitmap = self.display.retarget().reset()
             .ok().expect("did not get target back");
 
@@ -90,16 +87,19 @@ impl Engine {
                 let (x2,y2) = self.cursor;
 
                 if let Some((x1,y1)) = last_point {
-                    let mut target = 
-                        self.display.retarget().set(bitmap.take().unwrap());
+                    let _last = self.display.retarget().set(bitmap.take().unwrap());
+
+                    // let diffx = x2 - x1;
+                    // let diffy = y2 - y1;
+                    // println!("delta ({},{}), mag: {}", diffx, diffy, diffy-diffx);
 
                     for i in 0..10 {
-                        self.display.draw_line(x1+i,y1, x2+i,y2, COLOR_PEN);
+                        self.display.draw_line(x1+i, y1, x2, y2+i, COLOR_PEN);
                     }
 
                     bitmap = self.display.retarget().reset()
                         .ok().expect("did not get target back");
-                } 
+                } // NOTE: doesn't draw point if mouse held for single frame
 
                 last_point = Some((x2,y2));
            } else { last_point = None; }
