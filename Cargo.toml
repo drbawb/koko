@@ -1,0 +1,8 @@
+[package]
+name = "koko"
+version = "0.1.0"
+authors = ["Robbie Straw <drbawb@fatalsyntax.com>"]
+
+[dependencies]
+sdl2 = "*"
+sdl2_ttf = "*"
