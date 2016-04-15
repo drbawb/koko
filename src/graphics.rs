@@ -13,8 +13,6 @@ pub struct Display {
     text:   Sdl2TtfContext, 
     font:   Font,  
     screen: Renderer<'static>,
-
-    region: Texture,
 }
 
 impl Display {
@@ -40,7 +38,6 @@ impl Display {
             .ok()
             .expect("could not initialize sdl2 rendering context");
 
-
         // NOTE: must hide cursor _after_ window is built otherwise it doesn't work.
         context.mouse().show_cursor(false);
         println!("is cursor showing? {}", context.mouse().is_cursor_showing());
@@ -51,18 +48,11 @@ impl Display {
         let opensans = textmode.load_font(Path::new("./OpenSans-Regular.ttf"), 18)
             .ok().expect("could not load OpenSans-Regular.ttf from workingdir");
 
-        let mut texture = renderer.create_texture(PixelFormatEnum::RGB888,
-                                                  TextureAccess::Streaming,
-                                                  1280, 720)
-            .ok().expect("could not open streaming texture");
-
         // strap it to graphics subsystem
         Display {
             text: textmode,
             font: opensans,
             screen: renderer,
-
-            region: texture,
         }
     }
 
@@ -92,23 +82,15 @@ impl Display {
 
     }
 
-    pub fn blit_map(&mut self, bitmap: &engine::Bitmap) {
-        self.region.with_lock(None, |tbuf,pitch| {
-            let mut ofs = 0;
-            for row in bitmap.pxbuf.iter() {
-                for col in row.iter() {
-                    let (r,g,b) = col.rgb();
-                    tbuf[ofs+0] = b;
-                    tbuf[ofs+1] = g;
-                    tbuf[ofs+2] = r;
-                    tbuf[ofs+3] = 0;
+    pub fn copy(&mut self, texture: &Texture) {
+        self.screen.copy(texture, None, None);
+    }
 
-                    ofs += 4;
-                }
-            }   
-        });
-
-        self.screen.copy(&self.region, None, None);
+    pub fn get_texture(&mut self, width: u32, height: u32) -> Texture {
+        self.screen.create_texture(PixelFormatEnum::ARGB8888,
+                                   TextureAccess::Streaming,
+                                   width, height)
+            .ok().expect("could not open streaming texture")
     }
 
     pub fn fill_rect(&mut self, dst: Rect, fill: Color) {

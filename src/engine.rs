@@ -11,11 +11,6 @@ use sdl2::rect::Rect; // TODO: abstract my own drawtypes?
 use graphics::Display;
 use input::Input;
 
-// TODO: HACK: assumes the size of viewport/region is 1280X720
-pub struct Bitmap {
-    pub pxbuf: Vec<Vec<Color>>,
-}
-
 pub struct Engine {
 	context:     sdl2::Sdl,
 	controller:  Input,
@@ -38,7 +33,7 @@ impl Engine {
     }
 
     pub fn run(&mut self) {
-        let target_fps_ms  = Duration::from_millis(1000 / 60); // TODO: const fn?
+        let target_fps_ms  = Duration::from_millis(1000 / 120); // TODO: const fn?
 
 		let mut event_pump = self.context.event_pump().unwrap();
         let mut is_running = true;
@@ -46,9 +41,10 @@ impl Engine {
         let mut frame_start_at;
         let mut elapsed_time = Duration::from_millis(0);
 
-        let mut bitmap = Bitmap { pxbuf: vec![ vec![Color::RGB(0,0,0); 1280]; 720] };
-
+        // drawing state
+        let mut bitmap = self.display.get_texture(1280,720);
         let mut mouse_clicked = false;
+        
         while is_running {
             frame_start_at  = Instant::now();
 
@@ -76,22 +72,29 @@ impl Engine {
             // handle exit game
 			if self.controller.was_key_released(Keycode::Escape) { is_running = false; }
 
-            let (y,x) = self.cursor;
+            let (x,y) = self.cursor;
             if mouse_clicked {
                 // origin x,y
-                for ofs_x in 0..5 {
-                    for ofs_y in 0..5 {
-                        let x = (x + ofs_x) as usize;
-                        let y = (y + ofs_y) as usize;
+                bitmap.with_lock(None, |buf,pitch| {
+                    for ofs_x in 0..5 {
+                        for ofs_y in 0..5 {
+                            let x = (x + ofs_x) as usize;
+                            let y = (y + ofs_y) as usize;
 
-                        bitmap.pxbuf[x as usize][y as usize] = Color::RGB(125, 0, 175);
+                            let row = y * 1280 * 4 as usize; // 1280 * 4bpp
+                            let col = x * 4;              // 4bpp
+                            buf[row + col + 0] = 175;
+                            buf[row + col + 1] = 0;
+                            buf[row + col + 2] = 125;
+                            buf[row + col + 3] = 0;
+                        }
                     }
-                }
+                });
             }
 
             // handle draw calls
 			self.display.clear_buffer(); // clear back-buffer
-            self.draw_bitmap(&bitmap);
+            self.display.copy(&bitmap);
             self.draw_cursor();
             self.draw_debug(elapsed_time);
 			self.display.switch_buffers();
@@ -104,10 +107,6 @@ impl Engine {
 
             thread::sleep(sleep_time);
         }
-    }
-
-    fn draw_bitmap(&mut self, bitmap: &Bitmap) {
-        self.display.blit_map(bitmap);
     }
 
     fn draw_cursor(&mut self) {
