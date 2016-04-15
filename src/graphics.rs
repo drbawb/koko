@@ -2,15 +2,19 @@ use std::path::Path;
 use std::time::Duration;
 
 use sdl2;
-use sdl2::pixels::Color;
+use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
-use sdl2::render::{self, Renderer};
+use sdl2::render::{self, Renderer, Texture, TextureAccess};
 use sdl2_ttf::{self, Font, Sdl2TtfContext};
+
+use engine;
 
 pub struct Display {
     text:   Sdl2TtfContext, 
     font:   Font,  
     screen: Renderer<'static>,
+
+    region: Texture,
 }
 
 impl Display {
@@ -47,11 +51,18 @@ impl Display {
         let opensans = textmode.load_font(Path::new("./OpenSans-Regular.ttf"), 18)
             .ok().expect("could not load OpenSans-Regular.ttf from workingdir");
 
+        let mut texture = renderer.create_texture(PixelFormatEnum::RGB888,
+                                                  TextureAccess::Streaming,
+                                                  1280, 720)
+            .ok().expect("could not open streaming texture");
+
         // strap it to graphics subsystem
         Display {
             text: textmode,
             font: opensans,
-            screen: renderer
+            screen: renderer,
+
+            region: texture,
         }
     }
 
@@ -79,6 +90,25 @@ impl Display {
 
         self.screen.copy(&texture, None, Some(Rect::new(10, 10, bounds.width(), bounds.height())));
 
+    }
+
+    pub fn blit_map(&mut self, bitmap: &engine::Bitmap) {
+        self.region.with_lock(None, |tbuf,pitch| {
+            let mut ofs = 0;
+            for row in bitmap.pxbuf.iter() {
+                for col in row.iter() {
+                    let (r,g,b) = col.rgb();
+                    tbuf[ofs+0] = b;
+                    tbuf[ofs+1] = g;
+                    tbuf[ofs+2] = r;
+                    tbuf[ofs+3] = 0;
+
+                    ofs += 4;
+                }
+            }   
+        });
+
+        self.screen.copy(&self.region, None, None);
     }
 
     pub fn fill_rect(&mut self, dst: Rect, fill: Color) {

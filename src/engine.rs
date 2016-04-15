@@ -11,6 +11,11 @@ use sdl2::rect::Rect; // TODO: abstract my own drawtypes?
 use graphics::Display;
 use input::Input;
 
+// TODO: HACK: assumes the size of viewport/region is 1280X720
+pub struct Bitmap {
+    pub pxbuf: Vec<Vec<Color>>,
+}
+
 pub struct Engine {
 	context:     sdl2::Sdl,
 	controller:  Input,
@@ -41,6 +46,9 @@ impl Engine {
         let mut frame_start_at;
         let mut elapsed_time = Duration::from_millis(0);
 
+        let mut bitmap = Bitmap { pxbuf: vec![ vec![Color::RGB(0,0,0); 1280]; 720] };
+
+        let mut mouse_clicked = false;
         while is_running {
             frame_start_at  = Instant::now();
 
@@ -58,6 +66,9 @@ impl Engine {
 
                     Event::MouseMotion { x, y, .. } => self.cursor = (x,y),
 
+                    Event::MouseButtonDown { .. } => mouse_clicked = true,
+                    Event::MouseButtonUp   { .. } => mouse_clicked = false,
+                    
 					_ => {},
 				}
 			}
@@ -65,20 +76,45 @@ impl Engine {
             // handle exit game
 			if self.controller.was_key_released(Keycode::Escape) { is_running = false; }
 
+            let (y,x) = self.cursor;
+            if mouse_clicked {
+                // origin x,y
+                for ofs_x in 0..5 {
+                    for ofs_y in 0..5 {
+                        let x = (x + ofs_x) as usize;
+                        let y = (y + ofs_y) as usize;
+
+                        bitmap.pxbuf[x as usize][y as usize] = Color::RGB(125, 0, 175);
+                    }
+                }
+            }
+
             // handle draw calls
 			self.display.clear_buffer(); // clear back-buffer
-            self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), Color::RGB(128, 0, 175));
-            self.display.blit_fps(elapsed_time);
+            self.draw_bitmap(&bitmap);
+            self.draw_cursor();
+            self.draw_debug(elapsed_time);
 			self.display.switch_buffers();
 
+            // sleep for <target> - <draw time> and floor to zero
             elapsed_time = frame_start_at.elapsed();
-            let sleep_time   = if elapsed_time > target_fps_ms {
+            let sleep_time = if elapsed_time > target_fps_ms {
                 Duration::from_millis(0)
             } else { target_fps_ms - elapsed_time };
 
-
-            // TODO: at least *pretend* we actually care about hitting 60FPS
             thread::sleep(sleep_time);
         }
+    }
+
+    fn draw_bitmap(&mut self, bitmap: &Bitmap) {
+        self.display.blit_map(bitmap);
+    }
+
+    fn draw_cursor(&mut self) {
+        self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), Color::RGB(128, 0, 175));
+    }
+
+    fn draw_debug(&mut self, elapsed_time: Duration) {
+        self.display.blit_fps(elapsed_time);
     }
 }
