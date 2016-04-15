@@ -3,11 +3,9 @@ use std::time::Duration;
 
 use sdl2;
 use sdl2::pixels::{Color, PixelFormatEnum};
-use sdl2::rect::Rect;
-use sdl2::render::{self, Renderer, Texture, TextureAccess};
+use sdl2::rect::{Point, Rect};
+use sdl2::render::{self, Renderer, RenderTarget, Texture, TextureAccess};
 use sdl2_ttf::{self, Font, Sdl2TtfContext};
-
-use engine;
 
 pub struct Display {
     text:   Sdl2TtfContext, 
@@ -65,13 +63,13 @@ impl Display {
     }
 
     // TODO: debug only
-    pub fn blit_fps(&mut self, time: Duration) {
+    pub fn blit_fps(&mut self, time: Duration, color: Color) {
         let mut time_ms = time.as_secs() * 1000;        // -> millis
         time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
         
         let buf = format!("{}ms", time_ms);
         let surface = self.font.render(&buf[..])
-            .solid(Color::RGB(255,255,0))
+            .solid(color)
             .ok().expect("could not render fps");
 
         let bounds = surface.rect();
@@ -88,9 +86,24 @@ impl Display {
 
     pub fn get_texture(&mut self, width: u32, height: u32) -> Texture {
         self.screen.create_texture(PixelFormatEnum::ARGB8888,
-                                   TextureAccess::Streaming,
+                                   TextureAccess::Target,
                                    width, height)
-            .ok().expect("could not open streaming texture")
+            .ok().expect("could not open texture")
+    }
+
+    pub fn retarget(&mut self) -> RenderTarget {
+        self.screen.render_target()
+            .expect("renderer does not support arbitrary targets")
+    }
+
+    pub fn draw_line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, color: Color)  {
+        let previous = self.screen.draw_color();
+        self.screen.set_draw_color(color);
+
+        self.screen.draw_line(Point::new(x1,y1), Point::new(x2,y2))
+            .ok().expect("could not draw line");
+
+        self.screen.set_draw_color(previous);
     }
 
     pub fn fill_rect(&mut self, dst: Rect, fill: Color) {

@@ -11,6 +11,10 @@ use sdl2::rect::Rect; // TODO: abstract my own drawtypes?
 use graphics::Display;
 use input::Input;
 
+pub static COLOR_BG: Color  = Color::RGB(0,0,0);
+pub static COLOR_FPS: Color = Color::RGB(255,255,0);
+pub static COLOR_PEN: Color = Color::RGB(125, 0, 175);
+
 pub struct Engine {
 	context:     sdl2::Sdl,
 	controller:  Input,
@@ -42,9 +46,19 @@ impl Engine {
         let mut elapsed_time = Duration::from_millis(0);
 
         // drawing state
-        let mut bitmap = self.display.get_texture(1280,720);
+        let mut bitmap = Some(self.display.get_texture(1280,720));
         let mut mouse_clicked = false;
-        
+        let mut last_point = None;
+
+        // init bitmap to good state
+        let mut target = 
+            self.display.retarget().set(bitmap.take().unwrap());
+
+        self.display.clear_buffer();
+
+        bitmap = self.display.retarget().reset()
+            .ok().expect("did not get target back");
+
         while is_running {
             frame_start_at  = Instant::now();
 
@@ -72,29 +86,28 @@ impl Engine {
             // handle exit game
 			if self.controller.was_key_released(Keycode::Escape) { is_running = false; }
 
-            let (x,y) = self.cursor;
             if mouse_clicked {
-                // origin x,y
-                bitmap.with_lock(None, |buf,pitch| {
-                    for ofs_x in 0..5 {
-                        for ofs_y in 0..5 {
-                            let x = (x + ofs_x) as usize;
-                            let y = (y + ofs_y) as usize;
+                let (x2,y2) = self.cursor;
 
-                            let row = y * 1280 * 4 as usize; // 1280 * 4bpp
-                            let col = x * 4;              // 4bpp
-                            buf[row + col + 0] = 175;
-                            buf[row + col + 1] = 0;
-                            buf[row + col + 2] = 125;
-                            buf[row + col + 3] = 0;
-                        }
+                if let Some((x1,y1)) = last_point {
+                    let mut target = 
+                        self.display.retarget().set(bitmap.take().unwrap());
+
+                    for i in 0..10 {
+                        self.display.draw_line(x1+i,y1, x2+i,y2, COLOR_PEN);
                     }
-                });
-            }
+
+                    bitmap = self.display.retarget().reset()
+                        .ok().expect("did not get target back");
+                } 
+
+                last_point = Some((x2,y2));
+           } else { last_point = None; }
+
 
             // handle draw calls
 			self.display.clear_buffer(); // clear back-buffer
-            self.display.copy(&bitmap);
+            self.display.copy(bitmap.as_ref().unwrap());
             self.draw_cursor();
             self.draw_debug(elapsed_time);
 			self.display.switch_buffers();
@@ -110,10 +123,10 @@ impl Engine {
     }
 
     fn draw_cursor(&mut self) {
-        self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), Color::RGB(128, 0, 175));
+        self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), COLOR_PEN);
     }
 
     fn draw_debug(&mut self, elapsed_time: Duration) {
-        self.display.blit_fps(elapsed_time);
+        self.display.blit_fps(elapsed_time, COLOR_FPS);
     }
 }
