@@ -17,6 +17,7 @@ pub static COLOR_PEN: Color = Color::RGB(125, 0, 175);
 
 #[derive(Debug)]
 enum BrushMode {
+    Normal,
     Squareish,
     WowSoEdgy,
 }
@@ -27,6 +28,7 @@ pub struct Engine {
 	display:     Display,
 
     brush:  BrushMode,
+    color:  (u8,u8,u8),
     cursor: (i32,i32),
 }
 
@@ -39,7 +41,8 @@ impl Engine {
             controller: Input::new(),
             display:    video_renderer,
 
-            brush:  BrushMode::Squareish,
+            brush:  BrushMode::Normal,
+            color:  (125,0,175),
             cursor: (0,0),
         }
     }
@@ -102,11 +105,21 @@ impl Engine {
             // switch brush
             if self.controller.was_key_released(Keycode::B) {
                 self.brush = match self.brush { // TODO: better cycle?
+                    BrushMode::Normal    => BrushMode::Squareish,
                     BrushMode::Squareish => BrushMode::WowSoEdgy,
                     BrushMode::WowSoEdgy => BrushMode::Squareish,
                 }
             }
 
+            if self.controller.is_key_held(Keycode::I) {
+                self.color.0 = self.color.0.wrapping_add(0x01);
+            } else if self.controller.is_key_held(Keycode::O) {
+                self.color.1 = self.color.1.wrapping_add(0x01);
+            } else if self.controller.is_key_held(Keycode::P) {
+                self.color.2 = self.color.2.wrapping_add(0x01);
+            }
+
+            let brush_color = Color::RGB(self.color.0, self.color.1, self.color.2);
             if mouse_clicked {
                 let (x2,y2) = self.cursor;
 
@@ -119,12 +132,14 @@ impl Engine {
 
                     match self.brush {
                         BrushMode::WowSoEdgy => for i in 0..10 {
-                            self.display.draw_line(x1+i, y1, x2, y2+i, COLOR_PEN);
+                            self.display.draw_line(x1+i, y1, x2, y2+i, brush_color);
                         },
 
                         BrushMode::Squareish => for i in 0..5 {
-                            self.display.draw_line(x1+i, y1, x2+i, y2, COLOR_PEN);
+                            self.display.draw_line(x1+i, y1, x2+i, y2, brush_color);
                         },
+
+                        BrushMode::Normal => {},
                     }
 
                     bitmap = self.display.retarget().reset()
@@ -138,7 +153,7 @@ impl Engine {
             // handle draw calls
 			self.display.clear_buffer(); // clear back-buffer
             self.display.copy(bitmap.as_ref().unwrap());
-            self.draw_cursor();
+            self.draw_cursor(brush_color);
             self.draw_debug(elapsed_time);
 			self.display.switch_buffers();
 
@@ -152,15 +167,20 @@ impl Engine {
         }
     }
 
-    fn draw_cursor(&mut self) {
-        self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), COLOR_PEN);
+    fn draw_cursor(&mut self, brush_color: Color) {
+        self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), brush_color);
     }
 
     fn draw_debug(&mut self, time: Duration) {
         let mut time_ms = time.as_secs() * 1000;        // -> millis
         time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
-        
-        let buf = format!("{}ms, e = erase all, b = brush ({:?})", time_ms, self.brush);
+      
+        let (hue_r, hue_g, hue_b) = self.color;
+
+        let buf = format!("{}ms, e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
+                          time_ms, 
+                          self.brush,
+                          hue_r, hue_g, hue_b);
         self.display.blit_text(&buf[..], COLOR_FPS);
     }
 }
