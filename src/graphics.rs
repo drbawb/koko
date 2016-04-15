@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::time::Duration;
 
 use sdl2;
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -31,22 +30,21 @@ impl Display {
             Err(msg) => panic!(msg),
         };
 
-        let renderer = window_context.renderer()
-            .build()
-            .ok()
-            .expect("could not initialize sdl2 rendering context");
+        let renderer = window_context.renderer().build()
+            .ok().expect("could not initialize sdl2 rendering context");
 
         // NOTE: must hide cursor _after_ window is built otherwise it doesn't work.
         context.mouse().show_cursor(false);
         println!("is cursor showing? {}", context.mouse().is_cursor_showing());
 
+        // set up the font stuff
         let textmode = sdl2_ttf::init()
             .ok().expect("could not open ttf font renderer");
 
         let opensans = textmode.load_font(Path::new("./OpenSans-Regular.ttf"), 18)
             .ok().expect("could not load OpenSans-Regular.ttf from workingdir");
 
-        // strap it to graphics subsystem
+        // strap it all to the graphics subsystem
         Display {
             _text: textmode,
             font: opensans,
@@ -62,15 +60,10 @@ impl Display {
         let _ = self.screen.clear();
     }
 
-    // TODO: debug only
-    pub fn blit_fps(&mut self, time: Duration, color: Color) {
-        let mut time_ms = time.as_secs() * 1000;        // -> millis
-        time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
-        
-        let buf = format!("{}ms", time_ms);
+    pub fn blit_text(&mut self, buf: &str, color: Color) {
         let surface = self.font.render(&buf[..])
             .solid(color)
-            .ok().expect("could not render fps");
+            .ok().expect("could not render text");
 
         let bounds = surface.rect();
         let texture = self.screen.create_texture_from_surface(surface)

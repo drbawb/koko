@@ -83,6 +83,14 @@ impl Engine {
             // handle exit game
 			if self.controller.was_key_released(Keycode::Escape) { is_running = false; }
 
+            // erase canvas
+            if self.controller.was_key_released(Keycode::E) {
+                let mut _last = self.display.retarget().set(bitmap.take().unwrap());
+                self.display.clear_buffer();
+                bitmap = self.display.retarget().reset()
+                    .ok().expect("did not get target back");
+            }
+
             if mouse_clicked {
                 let (x2,y2) = self.cursor;
 
@@ -126,7 +134,11 @@ impl Engine {
         self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), COLOR_PEN);
     }
 
-    fn draw_debug(&mut self, elapsed_time: Duration) {
-        self.display.blit_fps(elapsed_time, COLOR_FPS);
+    fn draw_debug(&mut self, time: Duration) {
+        let mut time_ms = time.as_secs() * 1000;        // -> millis
+        time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
+        
+        let buf = format!("{}ms, e = erase all", time_ms);
+        self.display.blit_text(&buf[..], COLOR_FPS);
     }
 }
