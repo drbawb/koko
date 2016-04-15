@@ -1,5 +1,5 @@
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sdl2;
 use sdl2::event::Event;
@@ -33,10 +33,17 @@ impl Engine {
     }
 
     pub fn run(&mut self) {
+        let target_fps_ms  = Duration::from_millis(1000 / 60); // TODO: const fn?
+
 		let mut event_pump = self.context.event_pump().unwrap();
         let mut is_running = true;
 
+        let mut frame_start_at;
+        let mut elapsed_time = Duration::from_millis(0);
+
         while is_running {
+            frame_start_at  = Instant::now();
+
 			// drain input event queue once per frame
 			self.controller.begin_new_frame();
 			for event in event_pump.poll_iter() {
@@ -61,10 +68,17 @@ impl Engine {
             // handle draw calls
 			self.display.clear_buffer(); // clear back-buffer
             self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), Color::RGB(128, 0, 175));
+            self.display.blit_fps(elapsed_time);
 			self.display.switch_buffers();
 
+            elapsed_time = frame_start_at.elapsed();
+            let sleep_time   = if elapsed_time > target_fps_ms {
+                Duration::from_millis(0)
+            } else { target_fps_ms - elapsed_time };
+
+
             // TODO: at least *pretend* we actually care about hitting 60FPS
-            thread::sleep(Duration::from_millis(1000 / 60));
+            thread::sleep(sleep_time);
         }
     }
 }
