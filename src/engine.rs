@@ -70,10 +70,9 @@ impl Engine {
         // init 9x9
         let mut regions = vec![];
         for _ in 0..9 {
-            let mut txbuf = Some(self.display.get_texture(1280,720));
             regions.push(Region {
                 is_dirty: true,
-                texture:  txbuf,
+                texture:  None,
             });
         }
 
@@ -220,7 +219,7 @@ impl Engine {
 
             // handle draw calls
             self.display.clear_buffer(); // clear back-buffer
-            self.draw_regions(&mut regions);
+            let num_regions_drawn = self.draw_regions(&mut regions);
             self.draw_cursor(brush_color);
 
             let V2(rx, ry) = self.scanbox + V2(1280,720);
@@ -242,10 +241,9 @@ impl Engine {
 
                         if (row >= pitch - 1) || (col >= pitch - 1) {
                             // new region
-                            let mut txbuf = Some(self.display.get_texture(1280,720));
                             regions.push(Region {
                                 is_dirty: true,
-                                texture:  txbuf,
+                                texture:  None,
                             });
                         } else {
                             regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
@@ -272,11 +270,9 @@ impl Engine {
 
                         if (row == 0) || (col == 0) {
                             // new region
-                            let mut txbuf = Some(self.display.get_texture(1280,720));
-
                             regions.push(Region {
                                 is_dirty: true,
-                                texture:  txbuf,
+                                texture:  None,
                             });
                         } else {
                             regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
@@ -287,7 +283,7 @@ impl Engine {
                 self.scanbox = V2(1280,720) + self.scanbox;
             }
 
-            self.draw_debug(elapsed_time, regions.len());
+            self.draw_debug(elapsed_time, regions.len(), num_regions_drawn);
             self.display.switch_buffers();
 
             // sleep for <target> - <draw time> and floor to zero
@@ -316,47 +312,76 @@ impl Engine {
         self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), brush_color);
     }
 
-    fn draw_debug(&mut self, time: Duration, num_regions: usize) {
+    fn draw_debug(&mut self, time: Duration, num_regions: usize, num_drawn: usize) {
         let mut time_ms = time.as_secs() * 1000;        // -> millis
         time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
       
         let (hue_r, hue_g, hue_b) = self.color;
-        let buf = format!("{}ms, # regions: {}, sb @ {:?}, \
+        let buf = format!("{}ms, # regions: {}, # drawn: {}, sb @ {:?}, \
                           e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
                           time_ms, 
-                          num_regions,
+                          num_regions, num_drawn,
                           self.scanbox,
                           self.brush,
                           hue_r, hue_g, hue_b);
         self.display.blit_text(&buf[..], COLOR_FPS);
     }
 
-    fn draw_regions(&mut self, regions: &mut Vec<Region>) {
+    // TODO: runs out of vram after ~1000 regions
+    // 1280 * 720 * 4bpp = ~3.6MiB
+    // ~3.6MiB * 1000 regions = ~3600MiB
+    //
+    // we should swap out regions that aren't inside the scanbox
+    //
+    fn draw_regions(&mut self, regions: &mut Vec<Region>) -> usize {
         let V2(ofs_x, ofs_y) = self.scanbox;
+        let top0   = ofs_y;
+        let bot0   = ofs_y + 720;
+        let left0  = ofs_x;
+        let right0 = ofs_x + 1280;
 
+        let mut count = 0;
         let pitch = (regions.len() as f64).sqrt() as usize;
         for row in 0..pitch {
             for col in 0..pitch {
                 // (0,0), (0, 720)
-                let x = (col * 1280) as i32;
-                let y = (row *  720) as i32;
+                let x = (col * 1280) as i64;
+                let y = (row *  720) as i64;
                 let ridx = col + (row * pitch);
 
-                if regions[ridx].is_dirty {
-                    regions[ridx].is_dirty = false;
-                    Engine::with_texture(&mut self.display, &mut regions[ridx].texture, |io| {
-                        io.clear_buffer();
-                        io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
-                        io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
-                        io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
-                        io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
-                    });
-                }
+                let top1   = y;
+                let bot1   = y + 720;
+                let left1  = x;
+                let right1 = x + 1280;
 
-                self.display.copy_t(regions[ridx].texture.as_ref().unwrap(),
-                    Rect::new(0, 0, 1280, 720),
-                    Rect::new(x - ofs_x as i32, y - ofs_y as i32, 1280, 720));
+                let in_scanbox = right1 >= left0 && left1 < right0
+                    && top1 < bot0 && bot1 >= top0;
+
+                if in_scanbox {
+                    count += 1;
+
+                    if regions[ridx].is_dirty {
+                        println!("dirty");
+                        let txbuf = self.display.get_texture(1280,720);
+                        regions[ridx].is_dirty = false;
+                        regions[ridx].texture = Some(txbuf);
+
+                        Engine::with_texture(&mut self.display, &mut regions[ridx].texture, |io| {
+                            io.clear_buffer();
+                            io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
+                            io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
+                            io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
+                            io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
+                        });
+                    }
+
+                    self.display.copy_t(regions[ridx].texture.as_ref().unwrap(),
+                        Rect::new(0, 0, 1280, 720),
+                        Rect::new((x - ofs_x) as i32, (y - ofs_y) as i32, 1280, 720));
+                }
             }
         }
+
+        count
     }
 }
