@@ -11,6 +11,7 @@ use sdl2::render::Texture;
 
 use graphics::Display;
 use input::Input;
+use units::V2;
 
 pub static COLOR_BG: Color  = Color::RGB(0,0,0);
 pub static COLOR_FPS: Color = Color::RGB(255,255,0);
@@ -28,9 +29,10 @@ pub struct Engine {
 	controller:  Input,
 	display:     Display,
 
-    brush:  BrushMode,
-    color:  (u8,u8,u8),
-    cursor: (i32,i32),
+    brush:   BrushMode,
+    color:   (u8,u8,u8),
+    cursor:  (i32,i32),
+    scanbox: V2,
 }
 
 impl Engine {
@@ -42,9 +44,10 @@ impl Engine {
             controller: Input::new(),
             display:    video_renderer,
 
-            brush:  BrushMode::Normal,
-            color:  (125,0,175),
-            cursor: (0,0),
+            brush:   BrushMode::Normal,
+            color:   (125,0,175),
+            cursor:  (0,0),
+            scanbox: V2(0,0),
         }
     }
 
@@ -120,6 +123,16 @@ impl Engine {
                 self.color.2 = self.color.2.wrapping_add(0x01);
             }
 
+            if self.controller.is_key_held(Keycode::Up) {
+                self.scanbox = self.scanbox - V2(0, 1);
+            } else if self.controller.is_key_held(Keycode::Down) {
+                self.scanbox = self.scanbox + V2(0, 1);
+            } else if self.controller.is_key_held(Keycode::Left) {
+                self.scanbox = self.scanbox - V2(1, 0);
+            } else if self.controller.is_key_held(Keycode::Right) {
+                self.scanbox = self.scanbox + V2(1, 0);
+            }
+
             let brush_color = Color::RGB(self.color.0, self.color.1, self.color.2);
             if mouse_clicked {
                 let (x2,y2) = self.cursor;
@@ -188,8 +201,9 @@ impl Engine {
         time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
       
         let (hue_r, hue_g, hue_b) = self.color;
-        let buf = format!("{}ms, e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
+        let buf = format!("{}ms, sb @ {:?}, e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
                           time_ms, 
+                          self.scanbox,
                           self.brush,
                           hue_r, hue_g, hue_b);
         self.display.blit_text(&buf[..], COLOR_FPS);

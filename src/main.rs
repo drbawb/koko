@@ -4,6 +4,7 @@ extern crate sdl2_ttf;
 pub mod engine;
 pub mod graphics;
 pub mod input;
+pub mod units;
 
 use engine::Engine;
 
