@@ -25,6 +25,11 @@ enum BrushMode {
     WowSoEdgy,
 }
 
+struct Region {
+    pub is_dirty: bool,
+    pub texture:  Option<Texture>,
+}
+
 pub struct Engine {
 	context:     sdl2::Sdl,
 	controller:  Input,
@@ -64,16 +69,11 @@ impl Engine {
         // init 9x9
         let mut regions = vec![];
         for _ in 0..9 {
-            let mut texture = Some(self.display.get_texture(1280,720));
-            Engine::with_texture(&mut self.display, &mut texture, |io| {
-                io.clear_buffer();
-                io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
-                io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
-                io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
-                io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
+            let mut txbuf = Some(self.display.get_texture(1280,720));
+            regions.push(Region {
+                is_dirty: true,
+                texture:  txbuf,
             });
-
-            regions.push(texture);
         }
 
         let mut mouse_clicked = false;
@@ -112,7 +112,7 @@ impl Engine {
             // erase canvas
             if self.controller.was_key_released(Keycode::E) {
                 for region in regions.iter_mut() {
-                    Engine::with_texture(&mut self.display, region, |io| {
+                    Engine::with_texture(&mut self.display, &mut region.texture, |io| {
                         io.clear_buffer();
                         io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
                         io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
@@ -163,7 +163,7 @@ impl Engine {
                     let y1 = y1 + ofs_y as i32;
                     let y2 = y2 + ofs_y as i32;
 
-                    Engine::with_texture(&mut self.display, &mut regions[0], |display| {
+                    Engine::with_texture(&mut self.display, &mut regions[0].texture, |display| {
                         match brush {
                             BrushMode::WowSoEdgy => for i in 0..10 {
                                 display.draw_line(x1+i, y1, x2, y2+i, brush_color);
@@ -199,7 +199,7 @@ impl Engine {
                         } else { (y1,y2) };
                         //println!("adj ({},{})=>({},{})", x1, y1, x2, y2);
 
-                        Engine::with_texture(&mut self.display, &mut regions[ridx as usize], |display| {
+                        Engine::with_texture(&mut self.display, &mut regions[ridx as usize].texture, |display| {
                             match brush {
                                 BrushMode::WowSoEdgy => for i in 0..10 {
                                     display.draw_line(x1+i, y1, x2, y2+i, brush_color);
@@ -227,8 +227,6 @@ impl Engine {
 			self.display.clear_buffer(); // clear back-buffer
             self.draw_regions(&mut regions);
             self.draw_cursor(brush_color);
-            self.draw_debug(elapsed_time, regions.len());
-			self.display.switch_buffers();
 
             let V2(rx, ry) = self.scanbox + V2(1280,720);
             let region_sqrt = (regions.len() as f64).sqrt();
@@ -247,22 +245,14 @@ impl Engine {
                     for col in 0..pitch {
                         let ridx = col + (row * 4);
 
-                        println!("row: {}, col: {}", row, col);
                         if (row >= pitch - 1) || (col >= pitch - 1) {
-                            println!("new one");
                             // new region
-                            let mut texture = Some(self.display.get_texture(1280,720));
-                            Engine::with_texture(&mut self.display, &mut texture, |io| {
-                                io.clear_buffer();
-                                io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
-                                io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
-                                io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
-                                io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
+                            let mut txbuf = Some(self.display.get_texture(1280,720));
+                            regions.push(Region {
+                                is_dirty: true,
+                                texture:  txbuf,
                             });
-
-                            regions.push(texture);
                         } else {
-                            println!("old one");
                             regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
                         }
                     }
@@ -285,22 +275,15 @@ impl Engine {
                     for col in 0..pitch {
                         let ridx = col + (row * 4);
 
-                        println!("row: {}, col: {}", row, col);
                         if (row == 0) || (col == 0) {
-                            println!("new one");
                             // new region
-                            let mut texture = Some(self.display.get_texture(1280,720));
-                            Engine::with_texture(&mut self.display, &mut texture, |io| {
-                                io.clear_buffer();
-                                io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
-                                io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
-                                io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
-                                io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
-                            });
+                            let mut txbuf = Some(self.display.get_texture(1280,720));
 
-                            regions.push(texture);
+                            regions.push(Region {
+                                is_dirty: true,
+                                texture:  txbuf,
+                            });
                         } else {
-                            println!("old one");
                             regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
                         }
                     }
@@ -308,7 +291,10 @@ impl Engine {
 
                 self.scanbox = V2(1280,720) + self.scanbox;
             }
- 
+
+            self.draw_debug(elapsed_time, regions.len());
+			self.display.switch_buffers();
+
             // sleep for <target> - <draw time> and floor to zero
             elapsed_time = frame_start_at.elapsed();
             let sleep_time = if elapsed_time > target_fps_ms {
@@ -350,7 +336,7 @@ impl Engine {
         self.display.blit_text(&buf[..], COLOR_FPS);
     }
 
-    fn draw_regions(&mut self, regions: &mut Vec<Option<Texture>>) {
+    fn draw_regions(&mut self, regions: &mut Vec<Region>) {
         let V2(ofs_x, ofs_y) = self.scanbox;
 
         let pitch = (regions.len() as f64).sqrt() as usize;
@@ -361,7 +347,18 @@ impl Engine {
                 let y = (row *  720) as i32;
                 let ridx = col + (row * pitch);
 
-                self.display.copy_t(regions[ridx].as_ref().unwrap(),
+                if regions[ridx].is_dirty {
+                    regions[ridx].is_dirty = false;
+                    Engine::with_texture(&mut self.display, &mut regions[ridx].texture, |io| {
+                        io.clear_buffer();
+                        io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
+                        io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
+                        io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
+                        io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
+                    });
+                }
+
+                self.display.copy_t(regions[ridx].texture.as_ref().unwrap(),
                     Rect::new(0, 0, 1280, 720),
                     Rect::new(x - ofs_x as i32, y - ofs_y as i32, 1280, 720));
             }
