@@ -276,7 +276,7 @@ impl Engine {
 
             // handle draw calls
             self.display.clear_buffer(); // clear back-buffer
-            let num_regions_drawn = self.draw_regions(&mut regions);
+            self.draw_regions(&mut regions);
             self.draw_cursor(brush_color);
 
             let V2(rx, ry) = self.scanbox + V2(1280,720);
@@ -329,6 +329,10 @@ impl Engine {
                 self.scanbox = V2(1280,720) + self.scanbox;
             }
 
+            let num_regions_drawn = regions.iter()
+                .filter(|region| region.is_hot)
+                .count();
+
             self.draw_debug(elapsed_time, regions.len(), num_regions_drawn);
             self.display.switch_buffers();
 
@@ -379,14 +383,13 @@ impl Engine {
     //
     // we should swap out regions that aren't inside the scanbox
     //
-    fn draw_regions(&mut self, regions: &mut Vec<Region>) -> usize {
+    fn draw_regions(&mut self, regions: &mut Vec<Region>) {
         let V2(ofs_x, ofs_y) = self.scanbox;
         let top0   = ofs_y;
         let bot0   = ofs_y + 720;
         let left0  = ofs_x;
         let right0 = ofs_x + 1280;
 
-        let mut count = 0;
         let pitch = (regions.len() as f64).sqrt() as usize;
         for row in 0..pitch {
             for col in 0..pitch {
@@ -404,8 +407,6 @@ impl Engine {
                     && top1 < bot0 && bot1 >= top0;
 
                 if in_scanbox {
-                    count += 1;
-
                     if !regions[ridx].is_init {
                         let txbuf = self.display.get_texture(1280,720);
                         regions[ridx].is_init = true;
@@ -431,7 +432,5 @@ impl Engine {
                 }
             }
         }
-
-        count
     }
 }
