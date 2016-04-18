@@ -43,16 +43,16 @@ impl Region {
         }
     }
 
-    pub fn swap_in(&mut self, io: &mut Display) {
+    pub fn swap_in(&mut self, io: &mut Display, pxbuf: &mut Vec<u8>) {
         assert!(self.is_init && !self.is_hot);
         let mut txbuf = io.get_texture(1280,720);
 
-        let mut pxbuf = Vec::with_capacity(1280 * 720 * 4);
+        unsafe { pxbuf.set_len(0); }
         for cbyte in self.rle_data.iter() {
             let (byte, count) = *cbyte;
             for _i in 0..count { pxbuf.push(byte) }
         }
-        
+       
         println!("unpack len: {}", pxbuf.len());
 
         txbuf.update(None, &pxbuf[..], 1280 * 4)
@@ -73,7 +73,7 @@ impl Region {
 
         // allocate rle buffer
         let buf = buf.take().unwrap(); // TODO: don't panic if we didn't get anything.
-        let mut rle = Vec::with_capacity(buf.len());
+        let mut rle = vec![];
         assert!(buf.len() > 0);
 
         // perform quick RLE
@@ -100,6 +100,7 @@ pub struct Engine {
     color:   (u8,u8,u8),
     cursor:  (i32,i32),
     scanbox: V2,
+    swapbuf: Vec<u8>,
 }
 
 impl Engine {
@@ -115,6 +116,7 @@ impl Engine {
             color:   (125,0,175),
             cursor:  (0,0),
             scanbox: V2(0,0),
+            swapbuf: vec![0; 1280 * 720 * 4],
         }
     }
 
@@ -422,7 +424,7 @@ impl Engine {
                         });
                     }
 
-                    if !regions[ridx].is_hot { regions[ridx].swap_in(&mut self.display) }
+                    if !regions[ridx].is_hot { regions[ridx].swap_in(&mut self.display, &mut self.swapbuf) }
 
                     self.display.copy_t(regions[ridx].texture.as_ref().unwrap(),
                         Rect::new(0, 0, 1280, 720),
