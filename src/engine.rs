@@ -64,7 +64,14 @@ impl Engine {
         let mut regions = vec![];
         for _ in 0..9 {
             let mut texture = Some(self.display.get_texture(1280,720));
-            Engine::with_texture(&mut self.display, &mut texture, |io| { io.clear_buffer() });
+            Engine::with_texture(&mut self.display, &mut texture, |io| {
+                io.clear_buffer();
+                io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
+                io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
+                io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
+                io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
+            });
+
             regions.push(texture);
         }
 
@@ -210,8 +217,10 @@ impl Engine {
     }
 
     fn draw_regions(&mut self, regions: &mut Vec<Option<Texture>>) {
-        for row in 0..1 {
-            for col in 0..1 {
+        let V2(ofs_x, ofs_y) = self.scanbox;
+
+        for row in 0..3 {
+            for col in 0..3 {
                 // (0,0), (0, 720)
                 let x = (col * 1280) as i32;
                 let y = (row *  720) as i32;
@@ -220,7 +229,7 @@ impl Engine {
                 println!("drawing [{}] at ({},{})", ridx, x, y);
                 self.display.copy_t(regions[ridx].as_ref().unwrap(),
                     Rect::new(0, 0, 1280, 720),
-                    Rect::new(x, y, 1280, 720));
+                    Rect::new(x - ofs_x as i32, y - ofs_y as i32, 1280, 720));
             }
         }
     }
