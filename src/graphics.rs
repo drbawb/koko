@@ -30,7 +30,9 @@ impl Display {
             Err(msg) => panic!(msg),
         };
 
-        let renderer = window_context.renderer().build()
+        let renderer = window_context.renderer()
+            .software()
+            .build()
             .ok().expect("could not initialize sdl2 rendering context");
 
         // NOTE: must hide cursor _after_ window is built otherwise it doesn't work.
