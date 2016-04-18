@@ -14,7 +14,7 @@ use graphics::Display;
 use input::Input;
 use units::V2;
 
-pub static COLOR_BG: Color  = Color::RGB(0,0,0);
+pub static COLOR_BG:  Color = Color::RGB(0,0,0);
 pub static COLOR_FPS: Color = Color::RGB(255,255,0);
 pub static COLOR_PEN: Color = Color::RGB(125, 0, 175);
 
@@ -27,8 +27,68 @@ enum BrushMode {
 }
 
 struct Region {
-    pub is_dirty: bool,
+    pub is_init:  bool,
+    pub is_hot:   bool,
     pub texture:  Option<Texture>,
+    pub rle_data: Vec<(u8,usize)>,
+}
+
+impl Region {
+    pub fn new() -> Region {
+        Region {
+            is_init:  false,
+            is_hot:   false,
+            texture:  None,
+            rle_data: vec![],
+        }
+    }
+
+    pub fn swap_in(&mut self, io: &mut Display) {
+        assert!(self.is_init && !self.is_hot);
+        let mut txbuf = io.get_texture(1280,720);
+
+        let mut pxbuf = Vec::with_capacity(1280 * 720 * 4);
+        for cbyte in self.rle_data.iter() {
+            let (byte, count) = *cbyte;
+            for _i in 0..count { pxbuf.push(byte) }
+        }
+        
+        println!("unpack len: {}", pxbuf.len());
+
+        txbuf.update(None, &pxbuf[..], 1280 * 4)
+            .ok().expect("could not update texture");
+
+        self.texture = Some(txbuf);
+        self.is_hot  = true;
+    }
+
+    pub fn swap_out(&mut self, io: &mut Display) {
+        if !self.is_init || !self.is_hot { return; }
+
+        // grab vram into byte buffer
+        let mut buf = None;
+        Engine::with_texture(io, &mut self.texture, |io| {
+            buf = Some(io.read_pixels());
+        });
+
+        // allocate rle buffer
+        let mut buf = buf.take().unwrap(); // TODO: don't panic if we didn't get anything.
+        let mut rle = Vec::with_capacity(buf.len());
+        assert!(buf.len() > 0);
+
+        // perform quick RLE
+        let mut run = (buf[0], 0);
+        for &byte in buf.iter() {
+            if byte == run.0 { run.1 += 1; }
+            else { rle.push(run); run = (byte, 1); }
+        }
+        rle.push(run); // push the last one...
+
+        println!("SWAP OUT: buf len: {}, rle len: {}", buf.len(), rle.len());
+        self.texture  = None; // drop texture on the floor
+        self.rle_data = rle;
+        self.is_hot   = false;
+    }
 }
 
 pub struct Engine {
@@ -70,10 +130,7 @@ impl Engine {
         // init 9x9
         let mut regions = vec![];
         for _ in 0..9 {
-            regions.push(Region {
-                is_dirty: true,
-                texture:  None,
-            });
+            regions.push(Region::new());
         }
 
         let mut mouse_clicked = false;
@@ -120,29 +177,6 @@ impl Engine {
                         io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
                     });
                 }
-            }
-
-            // NOTE: DEBUG: testing naive RLE encoding sizes
-            // dump canvas debug
-            if self.controller.was_key_released(Keycode::D) {
-                println!("reading origin ...");
-
-                let mut buf = None;
-                Engine::with_texture(&mut self.display, &mut regions[0].texture, |io| {
-                    buf = Some(io.read_pixels());
-                });
-
-                let mut buf = buf.take().unwrap(); // TODO: don't panic if we didn't get anything.
-                let mut rle = Vec::with_capacity(buf.len());
-                assert!(buf.len() > 0);
-
-                let mut run = (buf[0], 0);
-                for &byte in buf.iter() {
-                    if byte == run.0 { run.1 += 1; }
-                    else { rle.push(run); run = (byte, 1); } // TODO: one garbage byte
-                }
-
-                println!("buf len: {}, rle len: {}", buf.len(), rle.len());
             }
 
             // switch brush
@@ -264,10 +298,7 @@ impl Engine {
 
                         if (row >= pitch - 1) || (col >= pitch - 1) {
                             // new region
-                            regions.push(Region {
-                                is_dirty: true,
-                                texture:  None,
-                            });
+                            regions.push(Region::new());
                         } else {
                             regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
                         }
@@ -275,6 +306,7 @@ impl Engine {
                 }
             }
 
+            // TODO: can we collapse this with the previous case?
             // if they pan left, trick them into thinking had canvases there
             if (self.scanbox.0 < 0) || (self.scanbox.1 < 0) {
                 println!("need to regrow left!");
@@ -292,11 +324,7 @@ impl Engine {
                         let ridx = col + (row * 4);
 
                         if (row == 0) || (col == 0) {
-                            // new region
-                            regions.push(Region {
-                                is_dirty: true,
-                                texture:  None,
-                            });
+                            regions.push(Region::new());
                         } else {
                             regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
                         }
@@ -383,10 +411,10 @@ impl Engine {
                 if in_scanbox {
                     count += 1;
 
-                    if regions[ridx].is_dirty {
-                        println!("dirty");
+                    if !regions[ridx].is_init {
                         let txbuf = self.display.get_texture(1280,720);
-                        regions[ridx].is_dirty = false;
+                        regions[ridx].is_init = true;
+                        regions[ridx].is_hot  = true;
                         regions[ridx].texture = Some(txbuf);
 
                         Engine::with_texture(&mut self.display, &mut regions[ridx].texture, |io| {
@@ -398,9 +426,13 @@ impl Engine {
                         });
                     }
 
+                    if !regions[ridx].is_hot { regions[ridx].swap_in(&mut self.display) }
+
                     self.display.copy_t(regions[ridx].texture.as_ref().unwrap(),
                         Rect::new(0, 0, 1280, 720),
                         Rect::new((x - ofs_x) as i32, (y - ofs_y) as i32, 1280, 720));
+                } else {
+                    regions[ridx].swap_out(&mut self.display);
                 }
             }
         }
