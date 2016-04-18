@@ -184,10 +184,8 @@ impl Engine {
                         let row  = y1 / 720;
                         let ridx = (row * pitch) + col; // row * 3rows/col + col
 
-                        println!("[{}], row: {}, col: {}", ridx, row, col);
-                        
-                        println!("real ({},{})=>({},{})", x1, y1, x2, y2);
-
+                        //println!("[{}], row: {}, col: {}", ridx, row, col);
+                        //println!("real ({},{})=>({},{})", x1, y1, x2, y2);
                         let (x1,x2) = if x1 > 1280 {
                             let x1 = x1 % (1280 * col+1);
                             let x2 = x2 % (1280 * col+1);
@@ -199,8 +197,7 @@ impl Engine {
                             let y2 = y2 % ( 720 * row+1);
                             (y1,y2)
                         } else { (y1,y2) };
-
-                        println!("adj ({},{})=>({},{})", x1, y1, x2, y2);
+                        //println!("adj ({},{})=>({},{})", x1, y1, x2, y2);
 
                         Engine::with_texture(&mut self.display, &mut regions[ridx as usize], |display| {
                             match brush {
@@ -236,8 +233,7 @@ impl Engine {
             let V2(rx, ry) = self.scanbox + V2(1280,720);
             let region_sqrt = (regions.len() as f64).sqrt();
             if (rx as f64 > region_sqrt * 1280.0) || (ry as f64 > region_sqrt *  720.0) {
-
-                println!("need to regrow!");
+                println!("need to regrow right!");
                 let pitch = (region_sqrt + 1.0) as usize;
                 let next_square = pitch * pitch;
                
@@ -272,6 +268,47 @@ impl Engine {
                     }
                 }
             }
+
+            // if they pan left, trick them into thinking had canvases there
+            if (self.scanbox.0 < 0) || (self.scanbox.1 < 0) {
+                println!("need to regrow left!");
+                let pitch = (region_sqrt + 1.0) as usize;
+                let next_square = pitch * pitch;
+               
+                // swap in the newly regrown buffer
+                let mut buf = Vec::with_capacity(next_square);
+                mem::swap(&mut regions, &mut buf);
+                let mut old_drain = buf.into_iter();
+
+                // copy old / allocate new
+                for row in 0..pitch {
+                    for col in 0..pitch {
+                        let ridx = col + (row * 4);
+
+                        println!("row: {}, col: {}", row, col);
+                        if (row == 0) || (col == 0) {
+                            println!("new one");
+                            // new region
+                            let mut texture = Some(self.display.get_texture(1280,720));
+                            Engine::with_texture(&mut self.display, &mut texture, |io| {
+                                io.clear_buffer();
+                                io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
+                                io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
+                                io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
+                                io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
+                            });
+
+                            regions.push(texture);
+                        } else {
+                            println!("old one");
+                            regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
+                        }
+                    }
+                }
+
+                self.scanbox = V2(1280,720) + self.scanbox;
+            }
+ 
             // sleep for <target> - <draw time> and floor to zero
             elapsed_time = frame_start_at.elapsed();
             let sleep_time = if elapsed_time > target_fps_ms {
