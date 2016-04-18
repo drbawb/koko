@@ -31,9 +31,9 @@ struct Region {
 }
 
 pub struct Engine {
-	context:     sdl2::Sdl,
-	controller:  Input,
-	display:     Display,
+    context:     sdl2::Sdl,
+    controller:  Input,
+    display:     Display,
 
     brush:   BrushMode,
     color:   (u8,u8,u8),
@@ -60,7 +60,7 @@ impl Engine {
     pub fn run(&mut self) {
         let target_fps_ms  = Duration::from_millis(1000 / 120); // TODO: const fn?
 
-		let mut event_pump = self.context.event_pump().unwrap();
+        let mut event_pump = self.context.event_pump().unwrap();
         let mut is_running = true;
 
         let mut frame_start_at;
@@ -85,29 +85,29 @@ impl Engine {
         while is_running {
             frame_start_at  = Instant::now();
 
-			// drain input event queue once per frame
-			self.controller.begin_new_frame();
-			for event in event_pump.poll_iter() {
-				match event {
-					Event::KeyDown { keycode, .. } => {
-						self.controller.key_down_event(keycode.unwrap());
-					},
-
-					Event::KeyUp { keycode, .. } => {
-						self.controller.key_up_event(keycode.unwrap());
-					},
-
+            // drain input event queue once per frame
+            self.controller.begin_new_frame();
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::KeyDown { keycode, .. } => {
+                        self.controller.key_down_event(keycode.unwrap());
+                    },
+                    
+                    Event::KeyUp { keycode, .. } => {
+                        self.controller.key_up_event(keycode.unwrap());
+                    },
+                    
                     Event::MouseMotion { x, y, .. } => self.cursor = (x,y),
-
+                    
                     Event::MouseButtonDown { .. } => mouse_clicked = true,
                     Event::MouseButtonUp   { .. } => mouse_clicked = false,
                     
-					_ => {},
-				}
-			}
+                    _ => {},
+                }
+            }
 
             // handle exit game
-			if self.controller.was_key_released(Keycode::Escape) { is_running = false; }
+            if self.controller.was_key_released(Keycode::Escape) { is_running = false; }
 
             // erase canvas
             if self.controller.was_key_released(Keycode::E) {
@@ -224,7 +224,7 @@ impl Engine {
 
 
             // handle draw calls
-			self.display.clear_buffer(); // clear back-buffer
+            self.display.clear_buffer(); // clear back-buffer
             self.draw_regions(&mut regions);
             self.draw_cursor(brush_color);
 
@@ -293,7 +293,7 @@ impl Engine {
             }
 
             self.draw_debug(elapsed_time, regions.len());
-			self.display.switch_buffers();
+            self.display.switch_buffers();
 
             // sleep for <target> - <draw time> and floor to zero
             elapsed_time = frame_start_at.elapsed();
