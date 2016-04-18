@@ -23,6 +23,7 @@ enum BrushMode {
     Normal,
     Squareish,
     WowSoEdgy,
+    Eraser,
 }
 
 struct Region {
@@ -127,7 +128,8 @@ impl Engine {
                 self.brush = match self.brush { // TODO: better cycle?
                     BrushMode::Normal    => BrushMode::Squareish,
                     BrushMode::Squareish => BrushMode::WowSoEdgy,
-                    BrushMode::WowSoEdgy => BrushMode::Squareish,
+                    BrushMode::WowSoEdgy => BrushMode::Eraser,
+                    BrushMode::Eraser    => BrushMode::Normal,
                 }
             }
 
@@ -158,47 +160,36 @@ impl Engine {
                     let brush = self.brush;
                     let V2(ofs_x, ofs_y) = self.scanbox;
 
+                    // cursor + scanbox origin => adjusted coordinate
                     let x1 = x1 + ofs_x as i32;
                     let x2 = x2 + ofs_x as i32;
                     let y1 = y1 + ofs_y as i32;
                     let y2 = y2 + ofs_y as i32;
 
-                    Engine::with_texture(&mut self.display, &mut regions[0].texture, |display| {
-                        match brush {
-                            BrushMode::WowSoEdgy => for i in 0..10 {
-                                display.draw_line(x1+i, y1, x2, y2+i, brush_color);
-                            },
-
-                            BrushMode::Squareish => for i in 0..5 {
-                                display.draw_line(x1+i, y1, x2+i, y2, brush_color);
-                            },
-
-                            BrushMode::Normal => {},
-                        }
-                    });
-
+                    // compute ridx of adjusted coordinate
                     let pitch = (regions.len() as f64).sqrt() as i32;
-                    if (x1 > 1280) || (y1 > 720) {
-                        // compute ridx
-                        let col  = x1 / 1280;
-                        let row  = y1 / 720;
-                        let ridx = (row * pitch) + col; // row * 3rows/col + col
+                    let col  = x1 / 1280;
+                    let row  = y1 / 720;
+                    let ridx = (row * pitch) + col; // row * 3rows/col + col
 
-                        //println!("[{}], row: {}, col: {}", ridx, row, col);
-                        //println!("real ({},{})=>({},{})", x1, y1, x2, y2);
-                        let (x1,x2) = if x1 > 1280 {
-                            let x1 = x1 % (1280 * col+1);
-                            let x2 = x2 % (1280 * col+1);
-                            (x1,x2)
-                        } else { (x1,x2) };
+                    // blit in that region instead
+                    println!("[{}], row: {}, col: {}", ridx, row, col);
+                    println!("real ({},{})=>({},{})", x1, y1, x2, y2);
+                    let (x1,x2) = if x1 > 1280 {
+                        let x1 = x1 % (1280 * col+1);
+                        let x2 = x2 % (1280 * col+1);
+                        (x1,x2)
+                    } else { (x1,x2) };
 
-                        let (y1,y2) = if y1 > 720 {
-                            let y1 = y1 % ( 720 * row+1);
-                            let y2 = y2 % ( 720 * row+1);
-                            (y1,y2)
-                        } else { (y1,y2) };
-                        //println!("adj ({},{})=>({},{})", x1, y1, x2, y2);
+                    let (y1,y2) = if y1 > 720 {
+                        let y1 = y1 % ( 720 * row+1);
+                        let y2 = y2 % ( 720 * row+1);
+                        (y1,y2)
+                    } else { (y1,y2) };
+                    println!("adj ({},{})=>({},{})", x1, y1, x2, y2);
 
+
+                    if x1 + 5 < 1280 && x2 < 1280 && y1 < 720 && y2 + 10 < 720 {
                         Engine::with_texture(&mut self.display, &mut regions[ridx as usize].texture, |display| {
                             match brush {
                                 BrushMode::WowSoEdgy => for i in 0..10 {
@@ -207,6 +198,10 @@ impl Engine {
 
                                 BrushMode::Squareish => for i in 0..5 {
                                     display.draw_line(x1+i, y1, x2+i, y2, brush_color);
+                                },
+
+                                BrushMode::Eraser => {
+                                    display.fill_rect(Rect::new(x2,y2, 20, 20), Color::RGB(0,0,0));
                                 },
 
                                 BrushMode::Normal => {},
