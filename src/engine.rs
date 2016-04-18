@@ -1,3 +1,4 @@
+use std::mem;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -60,7 +61,7 @@ impl Engine {
         let mut frame_start_at;
         let mut elapsed_time = Duration::from_millis(0);
 
-        // drawing state
+        // init 9x9
         let mut regions = vec![];
         for _ in 0..9 {
             let mut texture = Some(self.display.get_texture(1280,720));
@@ -148,6 +149,7 @@ impl Engine {
                 self.scanbox = self.scanbox + V2(5, 0);
             }
 
+            // blit current brush to appropriate region
             let brush_color = Color::RGB(self.color.0, self.color.1, self.color.2);
             if mouse_clicked {
                 let (x2,y2) = self.cursor;
@@ -175,23 +177,24 @@ impl Engine {
                         }
                     });
 
-                    if (x1 > 1280 || y1 > 720) {
+                    let pitch = (regions.len() as f64).sqrt() as i32;
+                    if (x1 > 1280) || (y1 > 720) {
                         // compute ridx
                         let col  = x1 / 1280;
                         let row  = y1 / 720;
-                        let ridx = (row * 3) + col; // row * 3rows/col + col
+                        let ridx = (row * pitch) + col; // row * 3rows/col + col
 
                         println!("[{}], row: {}, col: {}", ridx, row, col);
                         
                         println!("real ({},{})=>({},{})", x1, y1, x2, y2);
 
-                        let (x1,x2) = if (x1 > 1280) {
+                        let (x1,x2) = if x1 > 1280 {
                             let x1 = x1 % (1280 * col+1);
                             let x2 = x2 % (1280 * col+1);
                             (x1,x2)
                         } else { (x1,x2) };
 
-                        let (y1,y2) = if (y1 > 720) {
+                        let (y1,y2) = if y1 > 720 {
                             let y1 = y1 % ( 720 * row+1);
                             let y2 = y2 % ( 720 * row+1);
                             (y1,y2)
@@ -230,6 +233,45 @@ impl Engine {
             self.draw_debug(elapsed_time, regions.len());
 			self.display.switch_buffers();
 
+            let V2(rx, ry) = self.scanbox + V2(1280,720);
+            let region_sqrt = (regions.len() as f64).sqrt();
+            if (rx as f64 > region_sqrt * 1280.0) || (ry as f64 > region_sqrt *  720.0) {
+
+                println!("need to regrow!");
+                let pitch = (region_sqrt + 1.0) as usize;
+                let next_square = pitch * pitch;
+               
+                // swap in the newly regrown buffer
+                let mut buf = Vec::with_capacity(next_square);
+                mem::swap(&mut regions, &mut buf);
+                let mut old_drain = buf.into_iter();
+
+                // copy old / allocate new
+                for row in 0..pitch {
+                    for col in 0..pitch {
+                        let ridx = col + (row * 4);
+
+                        println!("row: {}, col: {}", row, col);
+                        if (row >= pitch - 1) || (col >= pitch - 1) {
+                            println!("new one");
+                            // new region
+                            let mut texture = Some(self.display.get_texture(1280,720));
+                            Engine::with_texture(&mut self.display, &mut texture, |io| {
+                                io.clear_buffer();
+                                io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
+                                io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
+                                io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
+                                io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
+                            });
+
+                            regions.push(texture);
+                        } else {
+                            println!("old one");
+                            regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
+                        }
+                    }
+                }
+            }
             // sleep for <target> - <draw time> and floor to zero
             elapsed_time = frame_start_at.elapsed();
             let sleep_time = if elapsed_time > target_fps_ms {
@@ -274,12 +316,13 @@ impl Engine {
     fn draw_regions(&mut self, regions: &mut Vec<Option<Texture>>) {
         let V2(ofs_x, ofs_y) = self.scanbox;
 
-        for row in 0..3 {
-            for col in 0..3 {
+        let pitch = (regions.len() as f64).sqrt() as usize;
+        for row in 0..pitch {
+            for col in 0..pitch {
                 // (0,0), (0, 720)
                 let x = (col * 1280) as i32;
                 let y = (row *  720) as i32;
-                let ridx = col + (row * 3);
+                let ridx = col + (row * pitch);
 
                 self.display.copy_t(regions[ridx].as_ref().unwrap(),
                     Rect::new(0, 0, 1280, 720),
