@@ -7,6 +7,7 @@ use sdl2::keyboard::Keycode;
 
 use sdl2::pixels::Color;
 use sdl2::rect::Rect; // TODO: abstract my own drawtypes?
+use sdl2::render::Texture;
 
 use graphics::Display;
 use input::Input;
@@ -15,7 +16,7 @@ pub static COLOR_BG: Color  = Color::RGB(0,0,0);
 pub static COLOR_FPS: Color = Color::RGB(255,255,0);
 pub static COLOR_PEN: Color = Color::RGB(125, 0, 175);
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 enum BrushMode {
     Normal,
     Squareish,
@@ -57,16 +58,17 @@ impl Engine {
         let mut elapsed_time = Duration::from_millis(0);
 
         // drawing state
-        let mut bitmap = Some(self.display.get_texture(1280,720));
+        let mut regions = vec![];
+        for i in 0..9 {
+            regions.push(Some(self.display.get_texture(1280,720)));
+        }
+
         let mut mouse_clicked = false;
         let mut last_point = None;
 
         // init bitmap to good state
-        let mut _last = self.display.retarget().set(bitmap.take().unwrap());
-        self.display.clear_buffer();
-        bitmap = self.display.retarget().reset()
-            .ok().expect("did not get target back");
-
+        Engine::with_texture(&mut self.display, &mut regions[0], |io| { io.clear_buffer() });
+            
         while is_running {
             frame_start_at  = Instant::now();
 
@@ -96,10 +98,7 @@ impl Engine {
 
             // erase canvas
             if self.controller.was_key_released(Keycode::E) {
-                let mut _last = self.display.retarget().set(bitmap.take().unwrap());
-                self.display.clear_buffer();
-                bitmap = self.display.retarget().reset()
-                    .ok().expect("did not get target back");
+                Engine::with_texture(&mut self.display, &mut regions[0], |io| { io.clear_buffer() });
             }
 
             // switch brush
@@ -124,26 +123,25 @@ impl Engine {
                 let (x2,y2) = self.cursor;
 
                 if let Some((x1,y1)) = last_point {
-                    let _last = self.display.retarget().set(bitmap.take().unwrap());
+
+                    let brush = self.brush;
+                    Engine::with_texture(&mut self.display, &mut regions[0], |display| {
+                        match brush {
+                            BrushMode::WowSoEdgy => for i in 0..10 {
+                                display.draw_line(x1+i, y1, x2, y2+i, brush_color);
+                            },
+
+                            BrushMode::Squareish => for i in 0..5 {
+                                display.draw_line(x1+i, y1, x2+i, y2, brush_color);
+                            },
+
+                            BrushMode::Normal => {},
+                        }
+                    });
 
                     // let diffx = x2 - x1;
                     // let diffy = y2 - y1;
                     // println!("delta ({},{}), mag: {}", diffx, diffy, diffy-diffx);
-
-                    match self.brush {
-                        BrushMode::WowSoEdgy => for i in 0..10 {
-                            self.display.draw_line(x1+i, y1, x2, y2+i, brush_color);
-                        },
-
-                        BrushMode::Squareish => for i in 0..5 {
-                            self.display.draw_line(x1+i, y1, x2+i, y2, brush_color);
-                        },
-
-                        BrushMode::Normal => {},
-                    }
-
-                    bitmap = self.display.retarget().reset()
-                        .ok().expect("did not get target back");
                 } // NOTE: doesn't draw point if mouse held for single frame
 
                 last_point = Some((x2,y2));
@@ -152,7 +150,7 @@ impl Engine {
 
             // handle draw calls
 			self.display.clear_buffer(); // clear back-buffer
-            self.display.copy(bitmap.as_ref().unwrap());
+            self.display.copy(regions[0].as_ref().unwrap());
             self.draw_cursor(brush_color);
             self.draw_debug(elapsed_time);
 			self.display.switch_buffers();
@@ -167,6 +165,16 @@ impl Engine {
         }
     }
 
+    fn with_texture<F>(io: &mut Display, target: &mut Option<Texture>, mut mutator: F)
+        where F: FnMut(&mut Display) -> () {
+
+
+        let _last = io.retarget().set(target.take().unwrap());
+        mutator(io);
+        *target = io.retarget().reset()
+                        .ok().expect("did not get target back");
+    }
+
     fn draw_cursor(&mut self, brush_color: Color) {
         self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), brush_color);
     }
@@ -176,7 +184,6 @@ impl Engine {
         time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
       
         let (hue_r, hue_g, hue_b) = self.color;
-
         let buf = format!("{}ms, e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
                           time_ms, 
                           self.brush,
