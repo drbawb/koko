@@ -122,6 +122,29 @@ impl Engine {
                 }
             }
 
+            // NOTE: DEBUG: testing naive RLE encoding sizes
+            // dump canvas debug
+            if self.controller.was_key_released(Keycode::D) {
+                println!("reading origin ...");
+
+                let mut buf = None;
+                Engine::with_texture(&mut self.display, &mut regions[0].texture, |io| {
+                    buf = Some(io.read_pixels());
+                });
+
+                let mut buf = buf.take().unwrap(); // TODO: don't panic if we didn't get anything.
+                let mut rle = Vec::with_capacity(buf.len());
+                assert!(buf.len() > 0);
+
+                let mut run = (buf[0], 0);
+                for &byte in buf.iter() {
+                    if byte == run.0 { run.1 += 1; }
+                    else { rle.push(run); run = (byte, 1); } // TODO: one garbage byte
+                }
+
+                println!("buf len: {}, rle len: {}", buf.len(), rle.len());
+            }
+
             // switch brush
             if self.controller.was_key_released(Keycode::B) {
                 self.brush = match self.brush { // TODO: better cycle?

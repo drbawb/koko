@@ -109,6 +109,11 @@ impl Display {
         let _ = self.screen.set_draw_color(fill);
         let _ = self.screen.fill_rect(dst);
         let _ = self.screen.set_draw_color(previous);
+
     }
 
+    pub fn read_pixels(&mut self) -> Vec<u8> {
+        self.screen.read_pixels(None, PixelFormatEnum::ARGB8888)
+            .ok().expect("could not get pixels out of current buffer")
+    }
 }
