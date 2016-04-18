@@ -44,7 +44,7 @@ impl Engine {
             controller: Input::new(),
             display:    video_renderer,
 
-            brush:   BrushMode::Normal,
+            brush:   BrushMode::Squareish,
             color:   (125,0,175),
             cursor:  (0,0),
             scanbox: V2(0,0),
@@ -110,7 +110,15 @@ impl Engine {
 
             // erase canvas
             if self.controller.was_key_released(Keycode::E) {
-                Engine::with_texture(&mut self.display, &mut regions[0], |io| { io.clear_buffer() });
+                for region in regions.iter_mut() {
+                    Engine::with_texture(&mut self.display, region, |io| {
+                        io.clear_buffer();
+                        io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
+                        io.fill_rect(Rect::new(0,715,1280,5), Color::RGB(255,0,0));  // bottom
+                        io.fill_rect(Rect::new(0,0,5,720),    Color::RGB(255,0,0) ); // left
+                        io.fill_rect(Rect::new(1275,0,5,720), Color::RGB(255,0,0));  // right
+                    });
+                }
             }
 
             // switch brush
@@ -131,13 +139,13 @@ impl Engine {
             }
 
             if self.controller.is_key_held(Keycode::Up) {
-                self.scanbox = self.scanbox - V2(0, 1);
+                self.scanbox = self.scanbox - V2(0, 5);
             } else if self.controller.is_key_held(Keycode::Down) {
-                self.scanbox = self.scanbox + V2(0, 1);
+                self.scanbox = self.scanbox + V2(0, 5);
             } else if self.controller.is_key_held(Keycode::Left) {
-                self.scanbox = self.scanbox - V2(1, 0);
+                self.scanbox = self.scanbox - V2(5, 0);
             } else if self.controller.is_key_held(Keycode::Right) {
-                self.scanbox = self.scanbox + V2(1, 0);
+                self.scanbox = self.scanbox + V2(5, 0);
             }
 
             let brush_color = Color::RGB(self.color.0, self.color.1, self.color.2);
@@ -145,8 +153,14 @@ impl Engine {
                 let (x2,y2) = self.cursor;
 
                 if let Some((x1,y1)) = last_point {
-
                     let brush = self.brush;
+                    let V2(ofs_x, ofs_y) = self.scanbox;
+
+                    let x1 = x1 + ofs_x as i32;
+                    let x2 = x2 + ofs_x as i32;
+                    let y1 = y1 + ofs_y as i32;
+                    let y2 = y2 + ofs_y as i32;
+
                     Engine::with_texture(&mut self.display, &mut regions[0], |display| {
                         match brush {
                             BrushMode::WowSoEdgy => for i in 0..10 {
@@ -161,6 +175,45 @@ impl Engine {
                         }
                     });
 
+                    if (x1 > 1280 || y1 > 720) {
+                        // compute ridx
+                        let col  = x1 / 1280;
+                        let row  = y1 / 720;
+                        let ridx = (row * 3) + col; // row * 3rows/col + col
+
+                        println!("[{}], row: {}, col: {}", ridx, row, col);
+                        
+                        println!("real ({},{})=>({},{})", x1, y1, x2, y2);
+
+                        let (x1,x2) = if (x1 > 1280) {
+                            let x1 = x1 % (1280 * col+1);
+                            let x2 = x2 % (1280 * col+1);
+                            (x1,x2)
+                        } else { (x1,x2) };
+
+                        let (y1,y2) = if (y1 > 720) {
+                            let y1 = y1 % ( 720 * row+1);
+                            let y2 = y2 % ( 720 * row+1);
+                            (y1,y2)
+                        } else { (y1,y2) };
+
+                        println!("adj ({},{})=>({},{})", x1, y1, x2, y2);
+
+                        Engine::with_texture(&mut self.display, &mut regions[ridx as usize], |display| {
+                            match brush {
+                                BrushMode::WowSoEdgy => for i in 0..10 {
+                                    display.draw_line(x1+i, y1, x2, y2+i, brush_color);
+                                },
+
+                                BrushMode::Squareish => for i in 0..5 {
+                                    display.draw_line(x1+i, y1, x2+i, y2, brush_color);
+                                },
+
+                                BrushMode::Normal => {},
+                            }
+                        });
+                    }
+
                     // let diffx = x2 - x1;
                     // let diffy = y2 - y1;
                     // println!("delta ({},{}), mag: {}", diffx, diffy, diffy-diffx);
@@ -174,7 +227,7 @@ impl Engine {
 			self.display.clear_buffer(); // clear back-buffer
             self.draw_regions(&mut regions);
             self.draw_cursor(brush_color);
-            self.draw_debug(elapsed_time);
+            self.draw_debug(elapsed_time, regions.len());
 			self.display.switch_buffers();
 
             // sleep for <target> - <draw time> and floor to zero
@@ -203,13 +256,15 @@ impl Engine {
         self.display.fill_rect(Rect::new(self.cursor.0, self.cursor.1, 10, 10), brush_color);
     }
 
-    fn draw_debug(&mut self, time: Duration) {
+    fn draw_debug(&mut self, time: Duration, num_regions: usize) {
         let mut time_ms = time.as_secs() * 1000;        // -> millis
         time_ms += time.subsec_nanos() as u64 / (1000 * 1000); // /> micros /> millis
       
         let (hue_r, hue_g, hue_b) = self.color;
-        let buf = format!("{}ms, sb @ {:?}, e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
+        let buf = format!("{}ms, # regions: {}, sb @ {:?}, \
+                          e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
                           time_ms, 
+                          num_regions,
                           self.scanbox,
                           self.brush,
                           hue_r, hue_g, hue_b);
@@ -225,8 +280,7 @@ impl Engine {
                 let x = (col * 1280) as i32;
                 let y = (row *  720) as i32;
                 let ridx = col + (row * 3);
-                
-                println!("drawing [{}] at ({},{})", ridx, x, y);
+
                 self.display.copy_t(regions[ridx].as_ref().unwrap(),
                     Rect::new(0, 0, 1280, 720),
                     Rect::new(x - ofs_x as i32, y - ofs_y as i32, 1280, 720));
