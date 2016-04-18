@@ -72,7 +72,7 @@ impl Region {
         });
 
         // allocate rle buffer
-        let mut buf = buf.take().unwrap(); // TODO: don't panic if we didn't get anything.
+        let buf = buf.take().unwrap(); // TODO: don't panic if we didn't get anything.
         let mut rle = Vec::with_capacity(buf.len());
         assert!(buf.len() > 0);
 
@@ -294,10 +294,7 @@ impl Engine {
                 // copy old / allocate new
                 for row in 0..pitch {
                     for col in 0..pitch {
-                        let ridx = col + (row * 4);
-
                         if (row >= pitch - 1) || (col >= pitch - 1) {
-                            // new region
                             regions.push(Region::new());
                         } else {
                             regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
@@ -321,8 +318,6 @@ impl Engine {
                 // copy old / allocate new
                 for row in 0..pitch {
                     for col in 0..pitch {
-                        let ridx = col + (row * 4);
-
                         if (row == 0) || (col == 0) {
                             regions.push(Region::new());
                         } else {
