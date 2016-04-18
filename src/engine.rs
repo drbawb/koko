@@ -59,15 +59,17 @@ impl Engine {
 
         // drawing state
         let mut regions = vec![];
-        for i in 0..9 {
-            regions.push(Some(self.display.get_texture(1280,720)));
+        for _ in 0..9 {
+            let mut texture = Some(self.display.get_texture(1280,720));
+            Engine::with_texture(&mut self.display, &mut texture, |io| { io.clear_buffer() });
+            regions.push(texture);
         }
 
         let mut mouse_clicked = false;
         let mut last_point = None;
 
         // init bitmap to good state
-        Engine::with_texture(&mut self.display, &mut regions[0], |io| { io.clear_buffer() });
+        //
             
         while is_running {
             frame_start_at  = Instant::now();
@@ -150,7 +152,7 @@ impl Engine {
 
             // handle draw calls
 			self.display.clear_buffer(); // clear back-buffer
-            self.display.copy(regions[0].as_ref().unwrap());
+            self.draw_regions(&mut regions);
             self.draw_cursor(brush_color);
             self.draw_debug(elapsed_time);
 			self.display.switch_buffers();
@@ -165,9 +167,11 @@ impl Engine {
         }
     }
 
+    // HACK: pulls texture out of an option and gives you a closure in which
+    // you can use renderer calls to blit to it ...
+    //
     fn with_texture<F>(io: &mut Display, target: &mut Option<Texture>, mut mutator: F)
         where F: FnMut(&mut Display) -> () {
-
 
         let _last = io.retarget().set(target.take().unwrap());
         mutator(io);
@@ -189,5 +193,21 @@ impl Engine {
                           self.brush,
                           hue_r, hue_g, hue_b);
         self.display.blit_text(&buf[..], COLOR_FPS);
+    }
+
+    fn draw_regions(&mut self, regions: &mut Vec<Option<Texture>>) {
+        for row in 0..1 {
+            for col in 0..1 {
+                // (0,0), (0, 720)
+                let x = (col * 1280) as i32;
+                let y = (row *  720) as i32;
+                let ridx = col + (row * 3);
+                
+                println!("drawing [{}] at ({},{})", ridx, x, y);
+                self.display.copy_t(regions[ridx].as_ref().unwrap(),
+                    Rect::new(0, 0, 1280, 720),
+                    Rect::new(x, y, 1280, 720));
+            }
+        }
     }
 }

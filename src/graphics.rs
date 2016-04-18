@@ -78,6 +78,10 @@ impl Display {
         self.screen.copy(texture, None, None);
     }
 
+    pub fn copy_t(&mut self, texture: &Texture, src: Rect, dst: Rect) {
+        self.screen.copy(texture, Some(src), Some(dst));
+    }
+
     pub fn get_texture(&mut self, width: u32, height: u32) -> Texture {
         self.screen.create_texture(PixelFormatEnum::ARGB8888,
                                    TextureAccess::Target,
