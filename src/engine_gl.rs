@@ -1,16 +1,13 @@
-use std::mem;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use glium::backend::glutin_backend::GlutinFacade;
-use glium::glutin::{self, ElementState, Event, VirtualKeyCode as KeyCode};
+use glium::glutin::{ElementState, Event, VirtualKeyCode as KeyCode};
 use glium::{self,Surface};
 
 use graphics_gl::Vert2;
 use input::Input;
 use units::V2;
-
-const MAX_VERTS: usize = 128;
 
 pub struct Engine {
     is_running: bool,
@@ -31,6 +28,7 @@ impl Engine {
 
     pub fn run(&mut self) {
         let target_fps_ms = Duration::from_millis(1000 / 120); // TODO: const fn?
+        let game_start_at = Instant::now();
 
         let mut frame_start_at;
         let mut elapsed_time = Duration::from_millis(0);
@@ -38,15 +36,36 @@ impl Engine {
         // simple program
         let v_shade = r#"
             #version 140
-        
+
             in  vec2 pos;
             in  vec3 color;
             out vec4 px_color;
-            uniform float t;
+            out float fade_factor;
+            uniform float timer;
         
             void main() {
-                px_color = vec4(color, 1.0);
-                gl_Position = vec4(pos, 0.0, 1.0);
+                mat4 projection = mat4(
+                    vec4(720.0/1280.0, 0.0, 0.0, 0.0),
+                    vec4(         0.0, 1.0, 0.0, 0.0),
+                    vec4(         0.0, 0.0, 0.5, 0.5),
+                    vec4(         0.0, 0.0, 0.0, 1.0)
+                );
+
+                mat4 rotation = mat4(
+                    vec4( 1.0, 0.0, 0.0, 0.0),
+                    vec4( 0.0, 1.0, 0.0, 0.0),
+                    vec4( 0.0, 0.0, 1.0, 0.0),
+                    vec4( 0.0, 0.0, 0.0, 1.0)
+                );
+               
+                vec4 pos3d     = vec4(pos, 0.0, 1.0);
+                vec4 proj_pos  = projection * rotation * pos3d;
+                float perspective_factor = proj_pos.z * 0.5 + 1.0;
+
+
+                gl_Position = proj_pos/perspective_factor;
+                px_color    = vec4(color, 1.0);
+                fade_factor = sin(timer) * 0.5 + 0.5;
             }
         "#;
         
@@ -75,8 +94,10 @@ impl Engine {
         let mut vbuf = glium::VertexBuffer::dynamic(&self.context, &shape)
             .ok().expect("could not alloc vbuf");
 
-        let program = glium::Program::from_source(&self.context, v_shade, v_frag, None)
-            .ok().expect("could not load shaders");
+        let program = match glium::Program::from_source(&self.context, v_shade, v_frag, None) {
+            Ok(program) => program,
+            Err(msg) => panic!("could not load shader: {}", msg),
+        };
 
 
         let mut cursor_pts = vec![];
@@ -135,7 +156,12 @@ impl Engine {
                 .. Default::default()
             };
 
-            target.draw(&vbuf, &indices, &program, &uniform! { t: 0.0f32 }, &tri_params)
+            let mut time_ms = 0.0;
+            let time = Instant::now().duration_since(game_start_at);
+            time_ms += time.as_secs() as f64 * 1000.0;
+            time_ms += time.subsec_nanos() as f64 * 0.001 * 0.001;
+
+            target.draw(&vbuf, &indices, &program, &uniform! { timer: time_ms as f32 * 0.001 }, &tri_params)
                 .ok().expect("could not blit triangle example");
 
             target.finish()
