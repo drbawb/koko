@@ -1,5 +1,3 @@
-use std::path::Path;
-
 #[derive(Copy, Clone)]
 pub struct Vert2 {
     pub pos:   [f32; 3],

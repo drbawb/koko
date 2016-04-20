@@ -20,7 +20,8 @@ fn main() {
         Ok(gl_ctx) => {
             // set options on underlying glutin window ...
             gl_ctx.get_window().map(|gl_win| {
-                gl_win.set_cursor_state(glutin::CursorState::Normal);
+                gl_win.set_cursor_state(glutin::CursorState::Normal)
+                    .ok().expect("could not set cursor state");
             }); gl_ctx
         },
         Err(msg) => {

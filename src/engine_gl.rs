@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use glium::backend::glutin_backend::GlutinFacade;
 use glium::glutin::{ElementState, Event, VirtualKeyCode as KeyCode};
-use glium::{self,Surface};
+use glium::{self, Surface};
 
 use graphics_gl::Vert2;
 use input::Input;
@@ -31,16 +31,19 @@ impl Engine {
         let game_start_at = Instant::now();
 
         let mut frame_start_at;
-        let mut elapsed_time = Duration::from_millis(0);
+        let mut elapsed_time;
 
         // simple program
         let v_shade = r#"
             #version 140
 
-            in  vec2 pos;
+            in  vec3 pos;
             in  vec3 color;
             out vec4 px_color;
             out float fade_factor;
+           
+            uniform vec3    ofs;
+            uniform float scale;
             uniform float timer;
         
             void main() {
@@ -52,14 +55,28 @@ impl Engine {
                 );
 
                 mat4 rotation = mat4(
-                    vec4( 1.0, 0.0, 0.0, 0.0),
-                    vec4( 0.0, 1.0, 0.0, 0.0),
-                    vec4( 0.0, 0.0, 1.0, 0.0),
-                    vec4( 0.0, 0.0, 0.0, 1.0)
+                    vec4(1.0,         0.0,         0.0, 0.0),
+                    vec4(0.0,  cos(timer), -sin(timer), 0.0),
+                    vec4(0.0,  sin(timer),  cos(timer), 0.0),
+                    vec4(0.0,         0.0,         0.0, 1.0)
                 );
-               
-                vec4 pos3d     = vec4(pos, 0.0, 1.0);
-                vec4 proj_pos  = projection * rotation * pos3d;
+
+                mat4 translate = mat4(
+                    vec4(  1.0,   0.0,  0.0,  0.0),
+                    vec4(  0.0,   1.0,  0.0,  0.0),
+                    vec4(  0.0,   0.0,  1.0,  0.0),
+                    vec4(ofs.x, ofs.y,  0.0,  1.0)
+                );
+
+                mat4 scale = mat4(
+                    vec4(scale,   0.0,   0.0,  0.0),
+                    vec4(  0.0, scale,   0.0,  0.0),
+                    vec4(  0.0,   0.0, scale,  0.0),
+                    vec4(  0.0,   0.0,   0.0,  1.0)
+                );
+
+                vec4 pos3d     = vec4(pos, 1.0);
+                vec4 proj_pos  = translate * projection * rotation * scale * pos3d;
                 float perspective_factor = proj_pos.z * 0.5 + 1.0;
 
 
@@ -80,18 +97,19 @@ impl Engine {
             }
         "#;
 
-        let mut shape = [
-            Vert2 { pos: [-0.5, -0.5], color: [1.0, 0.0, 0.0] },
-            Vert2 { pos: [ 0.5, -0.5], color: [0.0, 1.0, 0.0] },
-            Vert2 { pos: [ 0.5,  0.5], color: [0.0, 0.0, 1.0] },
+        let shape = [
+            // face 1
+            Vert2 { pos: [ 0.0,  0.0, 0.0], color: [0.0, 1.0, 0.0] },
+            Vert2 { pos: [ 0.0, -1.0, 0.0], color: [0.0, 0.0, 1.0] },
+            Vert2 { pos: [ 1.0,  0.0, 0.0], color: [1.0, 0.0, 0.0] },
 
-            Vert2 { pos: [-0.5, -0.5], color: [1.0, 0.0, 0.0] },
-            Vert2 { pos: [-0.5,  0.5], color: [0.0, 1.0, 0.0] },
-            Vert2 { pos: [ 0.5,  0.5], color: [0.0, 0.0, 1.0] },
+            //Vert2 { pos: [ 0.0, -1.0, 0.0], color: [0.0, 0.0, 1.0] },
+            //Vert2 { pos: [ 1.0, -1.0, 0.0], color: [0.0, 1.0, 0.0] },
+            //Vert2 { pos: [ 1.0,  0.0, 0.0], color: [1.0, 0.0, 0.0] },
         ];
 
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-        let mut vbuf = glium::VertexBuffer::dynamic(&self.context, &shape)
+        let vbuf = glium::VertexBuffer::dynamic(&self.context, &shape)
             .ok().expect("could not alloc vbuf");
 
         let program = match glium::Program::from_source(&self.context, v_shade, v_frag, None) {
@@ -100,9 +118,8 @@ impl Engine {
         };
 
 
-        let mut cursor_pts = vec![];
         let mut cursor_down  = false;
-        let mut cursor_drawn = false;
+        let mut cursor_pts   = vec![];
 
         let mut cursor_x = 0;
         let mut cursor_y = 0;
@@ -125,10 +142,7 @@ impl Engine {
                     },
 
                     Event::MouseInput(ElementState::Pressed,  _)  => cursor_down = true,
-                    Event::MouseInput(ElementState::Released, _) => { 
-                        cursor_down  = false;
-                        cursor_drawn = false;
-                    },
+                    Event::MouseInput(ElementState::Released, _)  => cursor_down = false,
 
                     Event::MouseMoved(x,y) => { cursor_x = x; cursor_y = y },
 
@@ -136,8 +150,8 @@ impl Engine {
                 }
             }
 
-            // let world_x = (cursor_x as f32 / 640.0) - 1.0;
-            // let world_y = 1.0 - (cursor_y as f32 / 360.0);
+
+            let (wx, wy) = Engine::world_to_unit(cursor_x as f64, cursor_y as f64);
             if cursor_down {
                 cursor_pts.push(V2(cursor_x as i64, cursor_y as i64));
             }
@@ -151,8 +165,6 @@ impl Engine {
             target.clear_color(0.05, 0.05, 0.05, 1.0);
 
             let tri_params = glium::DrawParameters {
-                line_width: Some(16.0),
-                point_size: Some(5.0),
                 .. Default::default()
             };
 
@@ -161,7 +173,14 @@ impl Engine {
             time_ms += time.as_secs() as f64 * 1000.0;
             time_ms += time.subsec_nanos() as f64 * 0.001 * 0.001;
 
-            target.draw(&vbuf, &indices, &program, &uniform! { timer: time_ms as f32 * 0.001 }, &tri_params)
+            println!("cursor ofs: ({},{})", wx, wy);
+            let cursor_uni = uniform! {
+                ofs:   [wx as f32, wy as f32, 0.0f32], 
+                scale: 0.045f32,
+                timer: time_ms as f32 * 0.001,
+            };
+
+            target.draw(&vbuf, &indices, &program, &cursor_uni, &tri_params)
                 .ok().expect("could not blit triangle example");
 
             target.finish()
@@ -175,5 +194,11 @@ impl Engine {
 
             thread::sleep(sleep_time);
         }
+    }
+
+    fn world_to_unit(x: f64, y: f64) -> (f64, f64) {
+        let adj_x = x / 640.0;
+        let adj_y = y / 360.0;
+        ( (adj_x - 1.0), -(adj_y - 1.0) )
     }
 }
