@@ -76,7 +76,7 @@ impl Engine {
                 );
 
                 vec4 pos3d     = vec4(pos, 1.0);
-                vec4 proj_pos  = translate * projection * rotation * scale * pos3d;
+                vec4 proj_pos  = translate * projection * scale * pos3d;
                 float perspective_factor = proj_pos.z * 0.5 + 1.0;
 
 
@@ -173,10 +173,9 @@ impl Engine {
             time_ms += time.as_secs() as f64 * 1000.0;
             time_ms += time.subsec_nanos() as f64 * 0.001 * 0.001;
 
-            println!("cursor ofs: ({},{})", wx, wy);
             let cursor_uni = uniform! {
                 ofs:   [wx as f32, wy as f32, 0.0f32], 
-                scale: 0.045f32,
+                scale: 0.1f32,
                 timer: time_ms as f32 * 0.001,
             };
 
