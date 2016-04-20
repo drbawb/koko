@@ -1,5 +1,23 @@
 use std::ops::{Add, Sub};
 
+#[derive(Copy, Clone, Debug)]
+pub struct V2f(pub f64, pub f64);
+
+impl V2f {
+    pub fn len(&self) ->  f64 {
+        f64::sqrt(f64::powf(self.0, 2.0) + f64::powf(self.1, 2.0))
+    }
+
+    pub fn norm(&self) -> V2f {
+        let length = self.len();
+
+        match length <= 0.0 {
+            true  => V2f(0.0, 0.0),
+            false => V2f(self.0 / length, self.1 / length),
+        }
+    }
+}
+
 #[derive(Copy, Clone,Debug)]
 pub struct V2(pub i64, pub i64);
 
