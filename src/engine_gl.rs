@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -10,6 +9,7 @@ use glium::{self, texture, Surface};
 use graphics_gl::Vert2;
 use input::Input;
 use units::V2;
+use util;
 
 static BASIC_VRT: &'static str = include_str!("shaders/basic.v.glsl");
 static BASIC_FRG: &'static str = include_str!("shaders/basic.f.glsl");
@@ -39,7 +39,7 @@ impl TextBlitter {
             Vert2 { pos: [-  1.0,  0.75,  0.0], color: [1.0, 1.0, 1.0] },
         ];
 
-        let vbuf = glium::VertexBuffer::dynamic(context, &shape)
+        let vbuf = glium::VertexBuffer::new(context, &shape)
             .ok().expect("could not alloc vbuf");
 
         let program = match glium::Program::from_source(context, TEXT_VRT, TEXT_FRG, None) {
@@ -47,7 +47,7 @@ impl TextBlitter {
             Err(msg) => panic!("could not load shader: {}", msg),
         };
 
-        let (image, dim) = load_image_tga("./simple-font.tga");
+        let (image, dim) = util::load_image_tga("./simple-font.tga");
         let image = texture::RawImage2d::from_raw_rgba(image, (dim.0 as u32, dim.1 as u32));
         let texture = texture::Texture2d::new(context, image)
             .ok().expect("could not upload texture");
@@ -60,22 +60,39 @@ impl TextBlitter {
         }
     }
 
-    pub fn draw(&self, text: &str, target: &mut glium::Frame) {
+    pub fn draw(&self, text: &str, ofs: (f32, f32), target: &mut glium::Frame) {
         let mapping: Vec<(f32,f32)> = text.chars()
             .map(|cp| TextBlitter::ascii_to_ofs(cp))
             .collect();
+
+        // NOTE: there are two translation steps
+        //
+        // c_pos is applied before we scale the text so that it's computation
+        // can be done w/o taking current text scaling into account
+        //
+        // w_pos is applied after we scale the thing so we can just move
+        // it around as a single unit of text
+        //
+        // so essentially a character is:
+        //   1. translated so the upper left corner of the character is at the origin
+        //      (instead of the origin being the center of the sprite sheet)
+        //
+        //   2. translated over some number of characters (character offset * (16.0 / 128.0))
+        //   3. scaled to the user's preferred text size
+        //   4. translated to where the user wanted it on the screen (by upper left corner)
+        //
 
         let mut ofs_x = 0.0;
         for &(char_x, char_y) in mapping.iter() {
             let char_uni = uniform! {
                 atlas: &self.atlas,
-                w_ofs: [ofs_x, 0.0, 0.0f32],
+                c_pos: [ofs_x, 0.0, 0.0f32],
                 c_ofs: [char_x, -char_y],
-                scale: 0.25f32,
+                w_ofs: [ofs.0, ofs.1, 0.0f32],
+                scale: 0.15f32,
             };
 
-            // (one character in texture space) * (screen space)
-            ofs_x += (16.0 / 256.0) * 0.5;
+            ofs_x += (16.0 / 128.0); // move forward one character in textspace
 
             target.draw(&self.vbuf, &self.indices, &self.program, &char_uni, &DrawParameters {
                 .. Default::default()
@@ -216,15 +233,14 @@ impl Engine {
                 timer: time_ms as f32 * 0.001,
             };
 
-
             frame_count += 1;
             if frame_count > 10 {
                 frame_count = 0;
                 text_count = (text_count + 1) % 0xFF;
             }
 
-            let text_out = format!("hi 0x{:02X}", text_count);
-            text_blitter.draw(&text_out[..], &mut target);
+            let text_out = format!("debug mode 0x{:02X}", text_count);
+            text_blitter.draw(&text_out[..], (-0.5, 1.0), &mut target);
 
             target.draw(&vbuf, &indices, &program, &cursor_uni, &tri_params)
                 .ok().expect("could not blit cursor example");
@@ -247,64 +263,4 @@ impl Engine {
         let adj_y = y / 360.0;
         ( (adj_x - 1.0), -(adj_y - 1.0) )
     }
-}
-
-// TODO: move to util module
-// TODO: -> Result<>
-//
-fn load_image_tga(path_text: &str) -> (Vec<u8>, (usize,usize)) {
-    use std::fs::File;
-    use std::io::Read;
-    use std::path::Path;
-
-    let path = Path::new(path_text);
-    let mut file = File::open(path)
-        .ok().expect(&format!("could not find image file @ {:?}", path)[..]);
-
-    // read file into byte buffer
-    let mut buf = vec![];
-    let mut ofs = 0;
-    file.read_to_end(&mut buf);
-
-    assert!(buf[0] == 0); // no id field
-    assert!(buf[1] == 0); // no color map
-    assert!(buf[2] == 2); // uncompressed true color
-    ofs += 3; ofs += 5;   // skip header & color map
-    
-    let x_origin = (buf[ofs + 0] as u16) << 8 | buf[ofs + 1] as u16; ofs += 2;
-    let y_origin = (buf[ofs + 0] as u16) << 8 | buf[ofs + 1] as u16; ofs += 2;
-
-    let width  = (buf[ofs + 1] as u16) << 8 | buf[ofs + 0] as u16; ofs += 2;
-    let height = (buf[ofs + 1] as u16) << 8 | buf[ofs + 0] as u16; ofs += 2;
-    let depth  = buf[ofs]; ofs += 1;
-    let descriptor = buf[ofs]; ofs += 1;
-
-    println!("x origin: {}, y origin: {}", x_origin, y_origin);
-    println!("bpp: {}, width: {}, height: {}", depth, width, height);
-    println!("descriptor: {:08b}", descriptor);
-
-    println!("reading image data");
-    let width  = width as usize;
-    let height = height as usize;
-    let pitch  = (depth / 8) as usize;
-    let size   = width * height * pitch;
-    assert!(pitch == 4);
-
-    let mut rgba = Vec::with_capacity(size);
-    for row in 0..height {
-        for col in 0..width {
-            let px_ofs = (row * width * pitch) + (col * pitch);
-            if buf[ofs + px_ofs + 3] == 0 {
-                rgba.extend_from_slice(&[0x00, 0x00, 0x00, 0xFF]);
-            } else {
-                rgba.push(buf[ofs + px_ofs + 2]);
-                rgba.push(buf[ofs + px_ofs + 1]);
-                rgba.push(buf[ofs + px_ofs + 0]);
-                rgba.push(buf[ofs + px_ofs + 3]);
-            }
-        }
-    }
-
-    assert!(rgba.len() == width * height * 4);
-    return (rgba, (width,height));
 }

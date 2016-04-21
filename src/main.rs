@@ -4,6 +4,7 @@ pub mod engine_gl;
 pub mod graphics_gl;
 pub mod input;
 pub mod units;
+pub mod util;
 
 use engine_gl::Engine;
 use glium::glutin;

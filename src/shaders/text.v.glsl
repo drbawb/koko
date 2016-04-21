@@ -5,26 +5,33 @@ in  vec3 color;
 out vec2 tx_coord;
 
 uniform vec2    c_ofs;
+uniform vec3    c_pos;
 uniform vec3    w_ofs;
 uniform float   scale;
-uniform float   timer;
 
 void main() {
     mat4 projection = mat4(
         vec4(1.0, 0.0, 0.0, 0.0),
         vec4(0.0, 1.0, 0.0, 0.0),
-        vec4(0.0, 0.0, 0.5, 0.5),
+        vec4(0.0, 0.0, 1.0, 0.0),
         vec4(0.0, 0.0, 0.0, 1.0)
     );
 
-    mat4 rotation = mat4(
-        vec4(1.0,         0.0,         0.0, 0.0),
-        vec4(0.0,  cos(timer), -sin(timer), 0.0),
-        vec4(0.0,  sin(timer),  cos(timer), 0.0),
-        vec4(0.0,         0.0,         0.0, 1.0)
+    mat4 center = mat4(
+        vec4( 1.0,  0.0,  0.0,  0.0),
+        vec4( 0.0,  1.0,  0.0,  0.0),
+        vec4( 0.0,  0.0,  1.0,  0.0),
+        vec4( 1.0, -1.0,  0.0,  1.0)
     );
 
-    mat4 translate = mat4(
+    mat4 transchar = mat4(
+        vec4(    1.0,     0.0,  0.0,  0.0),
+        vec4(    0.0,     1.0,  0.0,  0.0),
+        vec4(    0.0,     0.0,  1.0,  0.0),
+        vec4(c_pos.x, c_pos.y,  0.0,  1.0)
+    );
+
+    mat4 transworld = mat4(
         vec4(    1.0,     0.0,  0.0,  0.0),
         vec4(    0.0,     1.0,  0.0,  0.0),
         vec4(    0.0,     0.0,  1.0,  0.0),
@@ -38,10 +45,9 @@ void main() {
         vec4(  0.0,   0.0,   0.0,  1.0)
     );
 
-    vec4 pos3d     = vec4(pos, 1.0);
-    vec4 proj_pos  = translate * projection * scale * pos3d;
-    float perspective_factor = proj_pos.z * 0.5 + 1.0;
-    
-    gl_Position = proj_pos/perspective_factor;
+    vec4 pos3d    = vec4(pos, 1.0);
+    vec4 proj_pos = projection * transworld * scale * transchar * center * pos3d;
+    gl_Position   = proj_pos;
+
     tx_coord = (pos3d.xy * vec2(0.5) + vec2(0.5)) + c_ofs;
 }
