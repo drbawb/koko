@@ -30,13 +30,13 @@ impl TextBlitter {
         // simple square
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
         let shape = [
-            Vert2 { pos: [-1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [ 1.0,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [-1.0,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-  1.0,   1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-0.875,   1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-  1.0,  0.75,  0.0], color: [1.0, 1.0, 1.0] },
 
-            Vert2 { pos: [-1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [ 1.0,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [ 1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-0.875,  0.75,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-0.875,   1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-  1.0,  0.75,  0.0], color: [1.0, 1.0, 1.0] },
         ];
 
         let vbuf = glium::VertexBuffer::dynamic(context, &shape)
@@ -61,15 +61,49 @@ impl TextBlitter {
     }
 
     pub fn draw(&self, target: &mut glium::Frame) {
-        let char_uni = uniform! {
-            atlas: &self.atlas,
-            ofs:   [0.0, 0.0, 0.0f32],
-            scale: 0.25f32,
+        let text = "hello world";
+
+        let mapping: Vec<(f32,f32)> = text.chars()
+            .map(|cp| TextBlitter::ascii_to_ofs(cp))
+            .collect();
+
+        let mut ofs_x = 0.0;
+        for &(char_x, char_y) in mapping.iter() {
+            let char_uni = uniform! {
+                atlas: &self.atlas,
+                w_ofs: [ofs_x, 0.0, 0.0f32],
+                c_ofs: [char_x, -char_y],
+                scale: 0.25f32,
+            };
+
+            ofs_x += 0.03125;
+
+            target.draw(&self.vbuf, &self.indices, &self.program, &char_uni, &DrawParameters {
+                .. Default::default()
+            }).ok().expect("could not blit char example");
+        }
+    }
+
+    fn ascii_to_ofs(cp: char) -> (f32, f32) {
+        use std::ascii::AsciiExt;
+        
+        assert!(cp.is_ascii());
+        let sprite_ofs = match cp {
+            'A'...'P' => (cp as u8 - 'A' as u8,      0),
+            'Q'...'Z' => (cp as u8 - 'Q' as u8,      1),
+            'a'...'f' => (cp as u8 - 'a' as u8 + 10, 1),
+            'g'...'v' => (cp as u8 - 'g' as u8,      2),
+            'w'...'z' => (cp as u8 - 'w' as u8,      3),
+
+            ' ' => (0, 7),
+
+            _ => panic!("unhandled character in spritemap"),
         };
 
-        target.draw(&self.vbuf, &self.indices, &self.program, &char_uni, &DrawParameters {
-            .. Default::default()
-        }).ok().expect("could not blit char example");
+        let char_x: f32 =  sprite_ofs.0 as f32 * (0.125 / 2.0);
+        let char_y: f32 =  sprite_ofs.1 as f32 * (0.125 / 1.0);
+
+        (char_x, char_y)
     }
 }
 
