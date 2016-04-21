@@ -25,15 +25,12 @@ impl Display {
                                            .input_grabbed()
                                            .build();
 
-        let window_context = match current_mode {
-            Ok(ctx)  => ctx,
-            Err(msg) => panic!(msg),
-        };
+        let window_context = current_mode.unwrap();
 
         let renderer = window_context.renderer()
             .software()
             .build()
-            .ok().expect("could not initialize sdl2 rendering context");
+            .expect("could not initialize sdl2 rendering context");
 
         // NOTE: must hide cursor _after_ window is built otherwise it doesn't work.
         context.mouse().show_cursor(false);
@@ -41,10 +38,10 @@ impl Display {
 
         // set up the font stuff
         let textmode = sdl2_ttf::init()
-            .ok().expect("could not open ttf font renderer");
+            .expect("could not open ttf font renderer");
 
         let opensans = textmode.load_font(Path::new("./OpenSans-Regular.ttf"), 18)
-            .ok().expect("could not load OpenSans-Regular.ttf from workingdir");
+            .expect("could not load OpenSans-Regular.ttf from workingdir");
 
         // strap it all to the graphics subsystem
         Display {
@@ -59,17 +56,17 @@ impl Display {
     }
 
     pub fn clear_buffer(&mut self) {
-        let _ = self.screen.clear();
+        self.screen.clear();
     }
 
     pub fn blit_text(&mut self, buf: &str, color: Color) {
         let surface = self.font.render(&buf[..])
             .solid(color)
-            .ok().expect("could not render text");
+            .expect("could not render text");
 
         let bounds = surface.rect();
         let texture = self.screen.create_texture_from_surface(surface)
-            .ok().expect("could blit font to texture");
+            .expect("could blit font to texture");
 
         let cursor_block = Rect::new(10,10, bounds.width(),bounds.height());
         self.screen.copy(&texture, None, Some(cursor_block));
@@ -88,7 +85,7 @@ impl Display {
         self.screen.create_texture(PixelFormatEnum::ARGB8888,
                                    TextureAccess::Target,
                                    width, height)
-            .ok().expect("could not open texture")
+            .expect("could not open texture")
     }
 
     pub fn retarget(&mut self) -> RenderTarget {
@@ -101,21 +98,21 @@ impl Display {
         self.screen.set_draw_color(color);
 
         self.screen.draw_line(Point::new(x1,y1), Point::new(x2,y2))
-            .ok().expect("could not draw line");
+            .expect("could not draw line");
 
         self.screen.set_draw_color(previous);
     }
 
     pub fn fill_rect(&mut self, dst: Rect, fill: Color) {
         let previous = self.screen.draw_color();
-        let _ = self.screen.set_draw_color(fill);
+        self.screen.set_draw_color(fill);
         let _ = self.screen.fill_rect(dst);
-        let _ = self.screen.set_draw_color(previous);
+        self.screen.set_draw_color(previous);
 
     }
 
     pub fn read_pixels(&mut self) -> Vec<u8> {
         self.screen.read_pixels(None, PixelFormatEnum::ARGB8888)
-            .ok().expect("could not get pixels out of current buffer")
+            .expect("could not get pixels out of current buffer")
     }
 }

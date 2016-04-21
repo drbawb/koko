@@ -26,6 +26,7 @@ enum BrushMode {
     Eraser,
 }
 
+#[derive(Default)]
 struct Region {
     pub is_init:  bool,
     pub is_hot:   bool,
@@ -35,12 +36,7 @@ struct Region {
 
 impl Region {
     pub fn new() -> Region {
-        Region {
-            is_init:  false,
-            is_hot:   false,
-            texture:  None,
-            rle_data: vec![],
-        }
+        Default::default()
     }
 
     pub fn swap_in(&mut self, io: &mut Display, pxbuf: &mut Vec<u8>) {
@@ -48,7 +44,7 @@ impl Region {
         let mut txbuf = io.get_texture(1280,720);
 
         unsafe { pxbuf.set_len(0); }
-        for cbyte in self.rle_data.iter() {
+        for cbyte in &self.rle_data {
             let (byte, count) = *cbyte;
             for _i in 0..count { pxbuf.push(byte) }
         }
@@ -56,7 +52,7 @@ impl Region {
         println!("unpack len: {}", pxbuf.len());
 
         txbuf.update(None, &pxbuf[..], 1280 * 4)
-            .ok().expect("could not update texture");
+            .expect("could not update texture");
 
         self.texture = Some(txbuf);
         self.is_hot  = true;
@@ -78,7 +74,7 @@ impl Region {
 
         // perform quick RLE
         let mut run = (buf[0], 0);
-        for &byte in buf.iter() {
+        for &byte in &buf {
             if byte == run.0 { run.1 += 1; }
             else { rle.push(run); run = (byte, 1); }
         }
@@ -130,10 +126,7 @@ impl Engine {
         let mut elapsed_time = Duration::from_millis(0);
 
         // init 9x9
-        let mut regions = vec![];
-        for _ in 0..9 {
-            regions.push(Region::new());
-        }
+        let mut regions : Vec<_> = (0..9).map(|_| Region::new()).collect();
 
         let mut mouse_clicked = false;
         let mut last_point = None;
@@ -148,20 +141,14 @@ impl Engine {
             self.controller.begin_new_frame();
             for event in event_pump.poll_iter() {
                 match event {
-                    Event::KeyDown { keycode, .. } => {
-                        self.controller.key_down_event(keycode.unwrap());
-                    },
-                    
-                    Event::KeyUp { keycode, .. } => {
-                        self.controller.key_up_event(keycode.unwrap());
-                    },
-                    
+                    Event::KeyDown { keycode, .. } =>
+                        self.controller.key_down_event(keycode.unwrap()),
+                    Event::KeyUp { keycode, .. } =>
+                        self.controller.key_up_event(keycode.unwrap()),
                     Event::MouseMotion { x, y, .. } => self.cursor = (x,y),
-                    
                     Event::MouseButtonDown { .. } => mouse_clicked = true,
                     Event::MouseButtonUp   { .. } => mouse_clicked = false,
-                    
-                    _ => {},
+                    _ => (),
                 }
             }
 
@@ -170,7 +157,7 @@ impl Engine {
 
             // erase canvas
             if self.controller.was_key_released(Keycode::E) {
-                for region in regions.iter_mut() {
+                for region in &mut regions {
                     Engine::with_texture(&mut self.display, &mut region.texture, |io| {
                         io.clear_buffer();
                         io.fill_rect(Rect::new(0,0,1280,5),   Color::RGB(255,0,0));  // top
@@ -357,7 +344,7 @@ impl Engine {
         let _last = io.retarget().set(target.take().unwrap());
         mutator(io);
         *target = io.retarget().reset()
-                        .ok().expect("did not get target back");
+                        .expect("did not get target back");
     }
 
     fn draw_cursor(&mut self, brush_color: Color) {
@@ -385,7 +372,7 @@ impl Engine {
     //
     // we should swap out regions that aren't inside the scanbox
     //
-    fn draw_regions(&mut self, regions: &mut Vec<Region>) {
+    fn draw_regions(&mut self, regions: &mut [Region]) {
         let V2(ofs_x, ofs_y) = self.scanbox;
         let top0   = ofs_y;
         let bot0   = ofs_y + 720;

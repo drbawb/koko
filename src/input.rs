@@ -7,20 +7,16 @@ use std::collections::HashMap;
 ///- Pressed keys
 ///- Released keys
 ///- Held keys
+#[derive(Default)]
 pub struct Input {
     pressed_keys:   HashMap<u32, bool>,
     released_keys:  HashMap<u32, bool>,
     held_keys:      HashMap<u32, bool>,
-
 }
 
 impl Input {
     pub fn new() -> Input {
-        Input{
-            pressed_keys:   HashMap::<u32, bool>::new(),
-            released_keys:  HashMap::<u32, bool>::new(),
-            held_keys:      HashMap::<u32, bool>::new(),
-        }
+        Default::default()
     }
 
     /// Resets the toggle states of pressed & released keys.
