@@ -60,9 +60,7 @@ impl TextBlitter {
         }
     }
 
-    pub fn draw(&self, target: &mut glium::Frame) {
-        let text = "hello world";
-
+    pub fn draw(&self, text: &str, target: &mut glium::Frame) {
         let mapping: Vec<(f32,f32)> = text.chars()
             .map(|cp| TextBlitter::ascii_to_ofs(cp))
             .collect();
@@ -76,7 +74,8 @@ impl TextBlitter {
                 scale: 0.25f32,
             };
 
-            ofs_x += 0.03125;
+            // (one character in texture space) * (screen space)
+            ofs_x += (16.0 / 256.0) * 0.5;
 
             target.draw(&self.vbuf, &self.indices, &self.program, &char_uni, &DrawParameters {
                 .. Default::default()
@@ -94,6 +93,9 @@ impl TextBlitter {
             'a'...'f' => (cp as u8 - 'a' as u8 + 10, 1),
             'g'...'v' => (cp as u8 - 'g' as u8,      2),
             'w'...'z' => (cp as u8 - 'w' as u8,      3),
+
+            '1'...'9'  => ((cp as u8 - '1' as u8)  + 4, 3),
+            '0'        => (('9' as u8 - '0' as u8) + 4, 3),
 
             ' ' => (0, 7),
 
@@ -155,6 +157,8 @@ impl Engine {
         let mut cursor_y = 0;
 
         let text_blitter = TextBlitter::new(&mut self.context);
+        let mut text_count = 0;
+        let mut frame_count = 0;
 
         while self.is_running {
             // cut new frame
@@ -212,7 +216,15 @@ impl Engine {
                 timer: time_ms as f32 * 0.001,
             };
 
-            text_blitter.draw(&mut target);
+
+            frame_count += 1;
+            if frame_count > 10 {
+                frame_count = 0;
+                text_count = (text_count + 1) % 0xFF;
+            }
+
+            let text_out = format!("hi 0x{:02X}", text_count);
+            text_blitter.draw(&text_out[..], &mut target);
 
             target.draw(&vbuf, &indices, &program, &cursor_uni, &tri_params)
                 .ok().expect("could not blit cursor example");
