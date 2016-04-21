@@ -60,7 +60,7 @@ impl TextBlitter {
         }
     }
 
-    pub fn draw(&self, text: &str, ofs: (f32, f32), target: &mut glium::Frame) {
+    pub fn draw(&self, text: &str, font_size: f32, ofs: (f32, f32), target: &mut glium::Frame) {
         let mapping: Vec<(f32,f32)> = text.chars()
             .map(|cp| TextBlitter::ascii_to_ofs(cp))
             .collect();
@@ -89,10 +89,10 @@ impl TextBlitter {
                 c_pos: [ofs_x, 0.0, 0.0f32],
                 c_ofs: [char_x, -char_y],
                 w_ofs: [ofs.0, ofs.1, 0.0f32],
-                scale: 0.15f32,
+                scale: font_size,
             };
 
-            ofs_x += (16.0 / 128.0); // move forward one character in textspace
+            ofs_x += 16.0 / 128.0; // move forward one character in textspace
 
             target.draw(&self.vbuf, &self.indices, &self.program, &char_uni, &DrawParameters {
                 .. Default::default()
@@ -239,8 +239,12 @@ impl Engine {
                 text_count = (text_count + 1) % 0xFF;
             }
 
+            // TODO: helper for this
+            // strlen =>  (char width * text length) * scale
+            let scale = 0.15;
             let text_out = format!("debug mode 0x{:02X}", text_count);
-            text_blitter.draw(&text_out[..], (-0.5, 1.0), &mut target);
+            let strlen = ((16.0 / 128.0) * text_out.len() as f32) * scale;
+            text_blitter.draw(&text_out[..], scale, (1.0 - strlen, 1.0), &mut target);
 
             target.draw(&vbuf, &indices, &program, &cursor_uni, &tri_params)
                 .ok().expect("could not blit cursor example");
