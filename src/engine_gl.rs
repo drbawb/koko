@@ -3,6 +3,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use glium::backend::glutin_backend::GlutinFacade;
+use glium::draw_parameters::DrawParameters;
 use glium::glutin::{ElementState, Event, VirtualKeyCode as KeyCode};
 use glium::{self, texture, Surface};
 
@@ -16,8 +17,6 @@ static BASIC_FRG: &'static str = include_str!("shaders/basic.f.glsl");
 static TEXT_VRT: &'static str = include_str!("shaders/text.v.glsl");
 static TEXT_FRG: &'static str = include_str!("shaders/text.f.glsl");
 
-
-
 /// On GPU Text Blitting program
 pub struct TextBlitter {
     atlas:   glium::Texture2d,
@@ -28,17 +27,16 @@ pub struct TextBlitter {
 
 impl TextBlitter {
     pub fn new(context: &mut GlutinFacade) -> Self {
-
         // simple square
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
         let shape = [
-            Vert2 { pos: [ 1.0,  0.0, 0.0], color: [1.0, 0.0, 0.0] },
-            Vert2 { pos: [ 0.0,  0.0, 0.0], color: [0.0, 1.0, 0.0] },
-            Vert2 { pos: [ 0.0, -1.0, 0.0], color: [0.0, 0.0, 1.0] },
-            
-            Vert2 { pos: [ 1.0,  0.0, 0.0], color: [1.0, 0.0, 0.0] },
-            Vert2 { pos: [ 1.0, -1.0, 0.0], color: [0.0, 1.0, 0.0] },
-            Vert2 { pos: [ 0.0, -1.0, 0.0], color: [0.0, 0.0, 1.0] },
+            Vert2 { pos: [-1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [ 1.0,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-1.0,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
+
+            Vert2 { pos: [-1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [ 1.0,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [ 1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
         ];
 
         let vbuf = glium::VertexBuffer::dynamic(context, &shape)
@@ -65,12 +63,13 @@ impl TextBlitter {
     pub fn draw(&self, target: &mut glium::Frame) {
         let char_uni = uniform! {
             atlas: &self.atlas,
-            ofs:   [0.25f32, 0.25f32, 0.0f32],
+            ofs:   [0.0, 0.0, 0.0f32],
             scale: 0.25f32,
         };
 
-        target.draw(&self.vbuf, &self.indices, &self.program, &char_uni, &Default::default())
-            .ok().expect("could not blit char example");
+        target.draw(&self.vbuf, &self.indices, &self.program, &char_uni, &DrawParameters {
+            .. Default::default()
+        }).ok().expect("could not blit char example");
     }
 }
 
@@ -214,7 +213,7 @@ fn load_image_tga(path_text: &str) -> (Vec<u8>, (usize,usize)) {
 
     let path = Path::new(path_text);
     let mut file = File::open(path)
-        .ok().expect("could not find image file ...");
+        .ok().expect(&format!("could not find image file @ {:?}", path)[..]);
 
     // read file into byte buffer
     let mut buf = vec![];
@@ -239,19 +238,24 @@ fn load_image_tga(path_text: &str) -> (Vec<u8>, (usize,usize)) {
     println!("descriptor: {:08b}", descriptor);
 
     println!("reading image data");
-    let width = width as usize;
+    let width  = width as usize;
     let height = height as usize;
-    let mut size = width * height * 4;
+    let pitch  = (depth / 8) as usize;
+    let size   = width * height * pitch;
+    assert!(pitch == 4);
 
     let mut rgba = Vec::with_capacity(size);
-    for row in (0..height) {
+    for row in 0..height {
         for col in 0..width {
-            let px_ofs = (row * width * 3) + col;
-
-            rgba.push(buf[ofs + px_ofs + 0]);
-            rgba.push(buf[ofs + px_ofs + 1]);
-            rgba.push(buf[ofs + px_ofs + 2]);
-            rgba.push(0xFF);
+            let px_ofs = (row * width * pitch) + (col * pitch);
+            if buf[ofs + px_ofs + 3] == 0 {
+                rgba.extend_from_slice(&[0x00, 0x00, 0x00, 0xFF]);
+            } else {
+                rgba.push(buf[ofs + px_ofs + 2]);
+                rgba.push(buf[ofs + px_ofs + 1]);
+                rgba.push(buf[ofs + px_ofs + 0]);
+                rgba.push(buf[ofs + px_ofs + 3]);
+            }
         }
     }
 
