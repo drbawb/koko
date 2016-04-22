@@ -1,9 +1,12 @@
+use std::collections::LinkedList;
+use std::mem;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use glium::backend::glutin_backend::GlutinFacade;
+use glium::buffer::Content;
 use glium::glutin::{ElementState, Event, VirtualKeyCode as KeyCode};
-use glium::{self, Surface};
+use glium::{self, Surface, VertexBuffer};
 
 use graphics_gl::{TextBlitter, Vert2};
 use input::Input;
@@ -11,6 +14,13 @@ use units::V2;
 
 static BASIC_VRT: &'static str = include_str!("shaders/basic.v.glsl");
 static BASIC_FRG: &'static str = include_str!("shaders/basic.f.glsl");
+
+static MAX_VERTS: usize = 256;
+
+/// Represents a mouse-input sample from some brush
+struct ControlPoint {
+    screen_xy: V2,
+}
 
 pub struct Engine {
     is_running: bool,
@@ -37,7 +47,7 @@ impl Engine {
         let mut elapsed_time;
 
         // draw a basic shape using standard shader
-        let shape = [
+        let shape = vec![
             // face 1
             Vert2 { pos: [ 1.0,  0.0, 0.0], color: [1.0, 0.0, 0.0] },
             Vert2 { pos: [ 0.0,  0.0, 0.0], color: [1.0, 0.0, 0.0] },
@@ -45,20 +55,26 @@ impl Engine {
         ];
 
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-        let vbuf = glium::VertexBuffer::dynamic(&self.context, &shape)
+        let mut vbuf = glium::VertexBuffer::empty_dynamic(&self.context, MAX_VERTS)
             .ok().expect("could not alloc vbuf");
+
 
         let program = match glium::Program::from_source(&self.context, BASIC_VRT, BASIC_FRG, None) {
             Ok(program) => program,
             Err(msg) => panic!("could not load shader: {}", msg),
         };
 
-        let mut cursor_down  = false;
-        let mut cursor_pts   = vec![];
-
+        // current cursor state
         let mut cursor_x = 0;
         let mut cursor_y = 0;
 
+        // control point buffers
+        let mut input_buffers = vec![];
+        let mut input_samples = LinkedList::new();
+        let mut cursor_commit = true;
+        let mut cursor_down   = false;
+
+        // text renedring
         let text_blitter = TextBlitter::new(&mut self.context);
         let mut text_count  = 0;
         let mut frame_count = 0;
@@ -81,7 +97,11 @@ impl Engine {
                         self.controller.key_up_event(key);
                     },
 
-                    Event::MouseInput(ElementState::Pressed,  _)  => cursor_down = true,
+                    Event::MouseInput(ElementState::Pressed,  _)  => {
+                        cursor_down = true;
+                        cursor_commit = false;
+                    },
+
                     Event::MouseInput(ElementState::Released, _)  => cursor_down = false,
 
                     Event::MouseMoved(x,y) => { cursor_x = x; cursor_y = y },
@@ -90,10 +110,21 @@ impl Engine {
                 }
             }
 
-
+            // TODO: (?) deduplicate input against last input?
+            // store user input into control point buffers
             let (wx, wy) = Engine::world_to_unit(cursor_x as f64, cursor_y as f64);
             if cursor_down {
-                cursor_pts.push(V2(cursor_x as i64, cursor_y as i64));
+                input_samples.push_front(ControlPoint {
+                    screen_xy: V2(cursor_x as i64, cursor_y as i64),
+                });
+            } else if !cursor_down && !cursor_commit {
+                // swap the input buffer with a fresh one
+                let mut input_buf = LinkedList::new();
+                mem::swap(&mut input_samples, &mut input_buf);
+
+                // commit the dirty one to heap
+                input_buffers.push(input_buf);
+                cursor_commit = true;
             }
 
             if self.controller.was_key_pressed(KeyCode::Escape) {
@@ -119,13 +150,6 @@ impl Engine {
             time_ms += time.as_secs() as f64 * 1000.0;
             time_ms += time.subsec_nanos() as f64 * 0.001 * 0.001;
 
-            // cursor
-            let cursor_uni = uniform! {
-                ofs:   [wx as f32, wy as f32, 0.0f32], 
-                scale: 0.15f32,
-                timer: time_ms as f32 * 0.001,
-            };
-
             frame_count += 1;
             if frame_count > 10 {
                 frame_count = 0;
@@ -150,6 +174,54 @@ impl Engine {
                 // ((16.0 / 128.0) * text_out.len() as f32) * text_scale;
             text_blitter.draw(&text_out[..], text_scale, (1.0 - strlen, 1.0), &mut target);
 
+
+            // draw control points
+            {
+                // vbuf.invalidate();
+                let mut writer = vbuf.map_write();
+                writer.set(0, Vert2 { pos: [-1.0,  1.0,  0.0], color: [1.0, 0.0, 1.0] });
+                writer.set(1, Vert2 { pos: [-1.0, -1.0,  0.0], color: [1.0, 0.0, 1.0] });
+                writer.set(2, Vert2 { pos: [ 1.0,  1.0,  0.0], color: [1.0, 0.0, 1.0] });
+
+                writer.set(3, Vert2 { pos: [ 1.0,  1.0,  0.0], color: [1.0, 0.0, 1.0] });
+                writer.set(4, Vert2 { pos: [ 1.0, -1.0,  0.0], color: [1.0, 0.0, 1.0] });
+                writer.set(5, Vert2 { pos: [-1.0, -1.0,  0.0], color: [1.0, 0.0, 1.0] });
+            }
+
+            // for each path draw control point there
+            for path in input_buffers.iter() {
+                // inflate each control point to six verts
+                for point in path.iter() {
+                    let (wx, wy) = Engine::world_to_unit(point.screen_xy.0 as f64,
+                                                         point.screen_xy.1 as f64);
+
+                    let path_uni = uniform! {
+                        ofs:   [wx as f32, wy as f32, 0.0f32], 
+                        scale: 0.05f32,
+                        timer: time_ms as f32 * 0.001,
+                    };
+
+                    target.draw(&vbuf, &indices, &program, &path_uni, &tri_params)
+                        .ok().expect("could not blit cursor example");
+                }
+            }
+
+            // draw cursor
+            let cursor_uni = uniform! {
+                ofs:   [wx as f32, wy as f32, 0.0f32], 
+                scale: 0.15f32,
+                timer: time_ms as f32 * 0.001,
+            };
+
+            {
+                vbuf.invalidate();
+                let mut writer = vbuf.map_write();
+                for (idx, vert) in shape.iter().enumerate() {
+                    println!("draw {} {:?}", idx, vert);
+                    writer.set(idx, *vert);
+                }
+            }
+            
             target.draw(&vbuf, &indices, &program, &cursor_uni, &tri_params)
                 .ok().expect("could not blit cursor example");
 
