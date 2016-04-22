@@ -55,7 +55,11 @@ impl Engine {
         ];
 
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-        let mut vbuf = glium::VertexBuffer::empty_dynamic(&self.context, MAX_VERTS)
+        
+        let mut vbuf_cursor = glium::VertexBuffer::new(&self.context, &shape[..])
+            .ok().expect("could not alloc vbuf");
+        
+        let mut vbuf_points = glium::VertexBuffer::empty_dynamic(&self.context, MAX_VERTS)
             .ok().expect("could not alloc vbuf");
 
 
@@ -174,11 +178,20 @@ impl Engine {
                 // ((16.0 / 128.0) * text_out.len() as f32) * text_scale;
             text_blitter.draw(&text_out[..], text_scale, (1.0 - strlen, 1.0), &mut target);
 
+            // draw cursor
+            let cursor_uni = uniform! {
+                ofs:   [wx as f32, wy as f32, 0.0f32], 
+                scale: 0.15f32,
+                timer: time_ms as f32 * 0.001,
+            };
+
+            target.draw(&vbuf_cursor, &indices, &program, &cursor_uni, &tri_params)
+                .ok().expect("could not blit cursor example");
 
             // draw control points
             {
                 // vbuf.invalidate();
-                let mut writer = vbuf.map_write();
+                let mut writer = vbuf_points.map_write();
                 writer.set(0, Vert2 { pos: [-1.0,  1.0,  0.0], color: [1.0, 0.0, 1.0] });
                 writer.set(1, Vert2 { pos: [-1.0, -1.0,  0.0], color: [1.0, 0.0, 1.0] });
                 writer.set(2, Vert2 { pos: [ 1.0,  1.0,  0.0], color: [1.0, 0.0, 1.0] });
@@ -201,30 +214,11 @@ impl Engine {
                         timer: time_ms as f32 * 0.001,
                     };
 
-                    target.draw(&vbuf, &indices, &program, &path_uni, &tri_params)
+                    target.draw(&vbuf_points, &indices, &program, &path_uni, &tri_params)
                         .ok().expect("could not blit cursor example");
                 }
             }
-
-            // draw cursor
-            let cursor_uni = uniform! {
-                ofs:   [wx as f32, wy as f32, 0.0f32], 
-                scale: 0.15f32,
-                timer: time_ms as f32 * 0.001,
-            };
-
-            {
-                vbuf.invalidate();
-                let mut writer = vbuf.map_write();
-                for (idx, vert) in shape.iter().enumerate() {
-                    println!("draw {} {:?}", idx, vert);
-                    writer.set(idx, *vert);
-                }
-            }
             
-            target.draw(&vbuf, &indices, &program, &cursor_uni, &tri_params)
-                .ok().expect("could not blit cursor example");
-
             target.finish()
                 .ok().expect("could not render frame");
 
