@@ -3,11 +3,9 @@
 in  vec2 tx_coord;
 out vec4 color;
 
-uniform sampler2D atlas;
+uniform vec2 c_ofs;
+uniform sampler2DArray atlas_arr;
 
 void main() {
-    float u = tx_coord.x + (0.5 / 1024.0);
-    float v = tx_coord.y + (0.5 / 1024.0);
-    vec2 uv = vec2(u,v);
-    color = texture(atlas, uv);
+    color = texture(atlas_arr, vec3(tx_coord, c_ofs.y));
 }

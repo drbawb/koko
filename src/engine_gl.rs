@@ -19,7 +19,7 @@ static TEXT_FRG: &'static str = include_str!("shaders/text.f.glsl");
 
 /// On GPU Text Blitting program
 pub struct TextBlitter {
-    atlas:   glium::Texture2d,
+    atlas_array: texture::texture2d_array::Texture2dArray,
     vbuf:    glium::VertexBuffer<Vert2>,
     program: glium::Program,
     indices: glium::index::NoIndices,
@@ -29,14 +29,15 @@ impl TextBlitter {
     pub fn new(context: &mut GlutinFacade) -> Self {
         // simple square
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
+        let y_diff = 1.0 / 256.0;
         let shape = [
-            Vert2 { pos: [-  1.0,   1.0,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [-0.875,   1.0,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [-  1.0,  0.75,  0.0], color: [1.0, 1.0, 1.0] },
-
-            Vert2 { pos: [-0.875,  0.75,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [-0.875,   1.0,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [-  1.0,  0.75,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-  1.0,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-0.875,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-  1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
+ 
+            Vert2 { pos: [-  1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-0.875, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
+            Vert2 { pos: [-0.875,  1.0,  0.0], color: [1.0, 1.0, 1.0] },           
         ];
 
         let vbuf = glium::VertexBuffer::new(context, &shape)
@@ -48,12 +49,25 @@ impl TextBlitter {
         };
 
         let (image, dim) = util::load_image_tga("./simple-font.tga");
-        let image = texture::RawImage2d::from_raw_rgba(image, (dim.0 as u32, dim.1 as u32));
-        let texture = texture::Texture2d::new(context, image)
-            .ok().expect("could not upload texture");
+        
+        let mut sprite_rows = vec![];
+        for i in (0..8).rev() {
+            let stride = 256 * 4 * 16;
+            let start  = i * stride;
+            let end    = start + stride;
+
+            println!("{} => {}", start,end);
+
+            let row: Vec<u8> = (&image[start..end]).iter().map(|byte| *byte).collect();
+            let fuck = texture::RawImage2d::from_raw_rgba(row, (256,16));
+            sprite_rows.push(fuck);
+        }
+
+        let atlas_array = texture::texture2d_array::Texture2dArray::new(context,sprite_rows)
+            .ok().expect("could not uplaod texture array");
 
         TextBlitter {
-            atlas:   texture,
+            atlas_array: atlas_array,
             vbuf:    vbuf,
             program: program,
             indices: indices,
@@ -82,15 +96,15 @@ impl TextBlitter {
         //   4. translated to where the user wanted it on the screen (by upper left corner)
         //
 
-        let sampler = glium::uniforms::Sampler::new(&self.atlas);
-        let sampler = sampler.magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest);
 
         let mut ofs_x = 0.0;
         for &(char_x, char_y) in mapping.iter() {
             let char_uni = uniform! {
-                atlas: sampler,
+                atlas_array: self.atlas_array.sampled(),
+
                 c_pos: [ofs_x, 0.0, 0.0f32],
-                c_ofs: [char_x, -char_y],
+                c_ofs: [char_x, char_y],
+                w_ofs: [ofs.0, ofs.1, 0.0f32],
                 w_ofs: [ofs.0, ofs.1, 0.0f32],
                 scale: font_size,
             };
@@ -122,8 +136,8 @@ impl TextBlitter {
             _ => panic!("unhandled character in spritemap"),
         };
 
-        let char_x: f32 =  sprite_ofs.0 as f32 * (0.125 / 2.0);
-        let char_y: f32 =  sprite_ofs.1 as f32 * (0.125 / 1.0);
+        let char_x: f32 =  sprite_ofs.0 as f32 * (0.125 / 2.0); // index into the page
+        let char_y: f32 =  sprite_ofs.1 as f32;                 // atlas page number
 
         (char_x, char_y)
     }

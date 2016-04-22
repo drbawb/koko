@@ -38,9 +38,16 @@ void main() {
         vec4(  0.0,   0.0,   0.0,  1.0)
     );
 
+     mat4 aspect = mat4(
+        vec4(  1.0,  0.0,  0.0,  0.0),
+        vec4(  0.0, 16.0/256.0,  0.0,  0.0),
+        vec4(  0.0,  0.0,  1.0,  0.0),
+        vec4(  0.0,  0.0,  0.0,  1.0)
+    );   
+
     vec4 pos3d    = vec4(pos, 1.0);
-    vec4 proj_pos = transworld * scale * transchar * center * pos3d;
+    vec4 proj_pos = transworld * scale * transchar * aspect * center * pos3d;
     gl_Position   = proj_pos;
 
-    tx_coord = (pos3d.xy * vec2(0.5) + vec2(0.5)) + c_ofs;
+    tx_coord = (pos3d.xy * vec2(0.5) + vec2(0.5)) + vec2(c_ofs.x, 0.0);
 }
