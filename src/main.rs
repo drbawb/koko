@@ -10,7 +10,7 @@ use engine::Engine;
 
 fn main() {
 	println!("initalizing sdl ...");
-	let sdl_context = sdl2::init().ok().expect("could not init sdl2!?");
+	let sdl_context = sdl2::init().expect("could not init sdl2!?");
 
 	println!("let me tell you a story ...");
     let mut engine = Engine::new(sdl_context);
