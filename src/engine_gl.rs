@@ -37,7 +37,7 @@ impl TextBlitter {
  
             Vert2 { pos: [-  1.0, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
             Vert2 { pos: [-0.875, -1.0,  0.0], color: [1.0, 1.0, 1.0] },
-            Vert2 { pos: [-0.875,  1.0,  0.0], color: [1.0, 1.0, 1.0] },           
+            Vert2 { pos: [-0.875,  1.0,  0.0], color: [1.0, 1.0, 1.0] },
         ];
 
         let vbuf = glium::VertexBuffer::new(context, &shape)
@@ -101,7 +101,6 @@ impl TextBlitter {
         for &(char_x, char_y) in mapping.iter() {
             let char_uni = uniform! {
                 atlas_array: self.atlas_array.sampled(),
-
                 c_pos: [ofs_x, 0.0, 0.0f32],
                 c_ofs: [char_x, char_y],
                 w_ofs: [ofs.0, ofs.1, 0.0f32],
@@ -135,7 +134,7 @@ impl TextBlitter {
             _ => panic!("unhandled character in spritemap"),
         };
 
-        let char_x: f32 =  sprite_ofs.0 as f32 * (0.125 / 2.0); // index into the page
+        let char_x: f32 =  sprite_ofs.0 as f32 * (1.0 / 16.0); // index into the page
         let char_y: f32 =  sprite_ofs.1 as f32;                 // atlas page number
 
         (char_x, char_y)
@@ -265,7 +264,19 @@ impl Engine {
             // TODO: helper for this
             // strlen =>  (char width * text length) * scale
             let text_out = format!("debug mode 0x{:02X}", text_count);
-            let strlen = ((16.0 / 128.0) * text_out.len() as f32) * text_scale;
+
+            // the text size is
+            // (why /128 and not /256 ???)
+            // char width: 16 * (aspect correction) / 128
+            // * num chars
+            // * scale of text
+            //
+            let strlen =
+                ((16.0 * (720.0 / 1280.0)) / 128.0)
+                * text_out.len() as f32
+                * text_scale;
+
+                // ((16.0 / 128.0) * text_out.len() as f32) * text_scale;
             text_blitter.draw(&text_out[..], text_scale, (1.0 - strlen, 1.0), &mut target);
 
             target.draw(&vbuf, &indices, &program, &cursor_uni, &tri_params)
