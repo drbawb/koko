@@ -82,10 +82,13 @@ impl TextBlitter {
         //   4. translated to where the user wanted it on the screen (by upper left corner)
         //
 
+        let sampler = glium::uniforms::Sampler::new(&self.atlas);
+        let sampler = sampler.magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest);
+
         let mut ofs_x = 0.0;
         for &(char_x, char_y) in mapping.iter() {
             let char_uni = uniform! {
-                atlas: &self.atlas,
+                atlas: sampler,
                 c_pos: [ofs_x, 0.0, 0.0f32],
                 c_ofs: [char_x, -char_y],
                 w_ofs: [ofs.0, ofs.1, 0.0f32],
@@ -174,8 +177,9 @@ impl Engine {
         let mut cursor_y = 0;
 
         let text_blitter = TextBlitter::new(&mut self.context);
-        let mut text_count = 0;
+        let mut text_count  = 0;
         let mut frame_count = 0;
+        let mut text_scale  = 0.0;
 
         while self.is_running {
             // cut new frame
@@ -213,6 +217,12 @@ impl Engine {
                 self.is_running = false;
             }
 
+            if self.controller.was_key_pressed(KeyCode::Up) {
+                text_scale += 0.05;
+            } else if self.controller.was_key_pressed(KeyCode::Down) {
+                text_scale -= 0.05;
+            }
+
             // composite frame
             let mut target = self.context.draw();
             target.clear_color(0.05, 0.05, 0.05, 1.0);
@@ -241,10 +251,9 @@ impl Engine {
 
             // TODO: helper for this
             // strlen =>  (char width * text length) * scale
-            let scale = 0.15;
             let text_out = format!("debug mode 0x{:02X}", text_count);
-            let strlen = ((16.0 / 128.0) * text_out.len() as f32) * scale;
-            text_blitter.draw(&text_out[..], scale, (1.0 - strlen, 1.0), &mut target);
+            let strlen = ((16.0 / 128.0) * text_out.len() as f32) * text_scale;
+            text_blitter.draw(&text_out[..], text_scale, (1.0 - strlen, 1.0), &mut target);
 
             target.draw(&vbuf, &indices, &program, &cursor_uni, &tri_params)
                 .ok().expect("could not blit cursor example");

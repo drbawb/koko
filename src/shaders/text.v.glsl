@@ -10,13 +10,6 @@ uniform vec3    w_ofs;
 uniform float   scale;
 
 void main() {
-    mat4 projection = mat4(
-        vec4(1.0, 0.0, 0.0, 0.0),
-        vec4(0.0, 1.0, 0.0, 0.0),
-        vec4(0.0, 0.0, 1.0, 0.0),
-        vec4(0.0, 0.0, 0.0, 1.0)
-    );
-
     mat4 center = mat4(
         vec4( 1.0,  0.0,  0.0,  0.0),
         vec4( 0.0,  1.0,  0.0,  0.0),
@@ -46,7 +39,7 @@ void main() {
     );
 
     vec4 pos3d    = vec4(pos, 1.0);
-    vec4 proj_pos = projection * transworld * scale * transchar * center * pos3d;
+    vec4 proj_pos = transworld * scale * transchar * center * pos3d;
     gl_Position   = proj_pos;
 
     tx_coord = (pos3d.xy * vec2(0.5) + vec2(0.5)) + c_ofs;
