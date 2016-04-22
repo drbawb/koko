@@ -105,7 +105,6 @@ impl TextBlitter {
                 c_pos: [ofs_x, 0.0, 0.0f32],
                 c_ofs: [char_x, char_y],
                 w_ofs: [ofs.0, ofs.1, 0.0f32],
-                w_ofs: [ofs.0, ofs.1, 0.0f32],
                 scale: font_size,
             };
 
