@@ -201,6 +201,21 @@ impl Engine {
                 writer.set(5, Vert2 { pos: [-1.0, -1.0,  0.0], color: [1.0, 0.0, 1.0] });
             }
 
+            // inflate each control point to six verts
+            for point in input_samples.iter() {
+                let (wx, wy) = Engine::world_to_unit(point.screen_xy.0 as f64,
+                                                     point.screen_xy.1 as f64);
+
+                let path_uni = uniform! {
+                    ofs:   [wx as f32, wy as f32, 0.0f32], 
+                    scale: 0.05f32,
+                    timer: time_ms as f32 * 0.001,
+                };
+
+                target.draw(&vbuf_points, &indices, &program, &path_uni, &tri_params)
+                    .ok().expect("could not blit cursor example");
+            }
+
             // for each path draw control point there
             for path in input_buffers.iter() {
                 // inflate each control point to six verts
