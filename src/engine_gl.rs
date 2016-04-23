@@ -86,6 +86,16 @@ struct ControlPoint {
     screen_xy: V2,
 }
 
+struct Region {
+    paths: Vec<ControlPath>, // TODO: paths can span regions
+}
+
+impl Region {
+    pub fn new() -> Region {
+        Region { paths: vec![] }
+    }
+}
+
 pub struct Engine {
     is_running: bool,
 
@@ -153,8 +163,9 @@ impl Engine {
         let mut cursor_y = 0;
 
         // control point buffers
-        let mut input_buffers = vec![];
-        let mut input_samples = Vec::with_capacity(MAX_VERTS);
+        let mut regions = vec![];
+        let mut input_buffers: Vec<ControlPath>  = vec![];
+        let mut input_samples: Vec<ControlPoint> = Vec::with_capacity(MAX_VERTS);
         let mut cursor_commit = true;
         let mut cursor_down   = false;
 
@@ -193,33 +204,11 @@ impl Engine {
                 }
             }
 
-
-            // handle user input
+            // handle user keyboard input
             if self.controller.was_key_pressed(KeyCode::Escape) {
                 self.is_running = false;
             }
             
-            // store user input into control point buffers
-            let (wx, wy) = Engine::world_to_unit(cursor_x as f64, cursor_y as f64);
-            if cursor_down {
-                input_samples.push(ControlPoint {
-                    screen_xy: V2(cursor_x as i64, cursor_y as i64),
-                });
-            } else if !cursor_down && !cursor_commit {
-                // swap the input buffer with a fresh one
-                let mut input_buf = Vec::with_capacity(MAX_VERTS);
-                mem::swap(&mut input_samples, &mut input_buf);
-
-                // allocate gpu memory for them
-                // TODO: swap these out
-                println!("added {} points", input_buf.len());
-                let pathbuf = ControlPath::new(&self.context, input_buf);
-
-                // commit the dirty one to heap
-                input_buffers.push(pathbuf);
-                cursor_commit = true;
-            }
-
             if self.controller.is_key_held(KeyCode::I) {
                 self.color.0 = self.color.0.wrapping_add(0x01);
             } else if self.controller.is_key_held(KeyCode::O) {
@@ -238,6 +227,125 @@ impl Engine {
                 self.scanbox = self.scanbox + V2(5, 0);
             }
 
+            // regrow the region allocation if necessary
+            let V2(rx, ry) = self.scanbox + V2(1280,720);
+            let region_sqrt = (regions.len() as f64).sqrt();
+            if (rx as f64 > region_sqrt * 1280.0) || (ry as f64 > region_sqrt *  720.0) {
+                println!("need to regrow right!");
+                let pitch = (region_sqrt + 1.0) as usize;
+                let next_square = pitch * pitch;
+               
+                // swap in the newly regrown buffer
+                let mut buf = Vec::with_capacity(next_square);
+                mem::swap(&mut regions, &mut buf);
+                let mut old_drain = buf.into_iter();
+
+                // copy old / allocate new
+                for row in 0..pitch {
+                    for col in 0..pitch {
+                        if (row >= pitch - 1) || (col >= pitch - 1) {
+                            regions.push(Region::new());
+                        } else {
+                            regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
+                        }
+                    }
+                }
+            }
+
+            // TODO: can we collapse this with the previous case?
+            // if they pan left, trick them into thinking had canvases there
+            if (self.scanbox.0 < 0) || (self.scanbox.1 < 0) {
+                println!("need to regrow left!");
+                let pitch = (region_sqrt + 1.0) as usize;
+                let next_square = pitch * pitch;
+               
+                // swap in the newly regrown buffer
+                let mut buf = Vec::with_capacity(next_square);
+                mem::swap(&mut regions, &mut buf);
+                let mut old_drain = buf.into_iter();
+
+                // TODO: this is _a lot_ more expensive in the new engine !!!
+                // copying a lot more than a pointer to vram, copying the whole list
+                // of control points !!!
+                //
+                // copy old / allocate new
+                for row in 0..pitch {
+                    for col in 0..pitch {
+                        if (row == 0) || (col == 0) {
+                            regions.push(Region::new());
+                        } else {
+                            regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
+                        }
+                    }
+                }
+
+                self.scanbox = V2(1280,720) + self.scanbox;
+            }
+
+            // handle cursor input
+            //
+            // we convert the control point to it's unit-position
+            // inside a particular region of the scanbox
+            //
+            let brush = self.brush;
+            let V2(ofs_x, ofs_y) = self.scanbox;
+
+            let x1 = cursor_x as i64 + ofs_x;
+            let y1 = cursor_y as i64 + ofs_y;
+
+            // compute ridx of adjusted coordinate
+            let pitch = (regions.len() as f64).sqrt() as i64;
+            let col  = x1 / 1280;
+            let row  = y1 / 720;
+            let ridx = (row * pitch) + col; // row * 3rows/col + col
+
+            // blit in that region instead
+            println!("[{}], row: {}, col: {}", ridx, row, col);
+            println!("real ({},{})", x1, y1);
+            let x1 = match x1 > 1280 {
+                true  => x1 % (1280 * col+1),
+                false => x1,
+            };
+
+            let y1 = match y1 > 720 {
+                true  => y1 % ( 720 * row+1 ),
+                false => y1,
+            };
+            println!("adj ({},{})", x1, y1);
+
+
+            // store user input into control point buffer for the computed region
+            let (wx, wy) = Engine::world_to_unit(x1 as f64, y1 as f64);
+            if cursor_down {
+                input_samples.push(ControlPoint {
+                    screen_xy: V2(x1 as i64, y1 as i64),
+                });
+            } else if !cursor_down && !cursor_commit {
+                // TODO: commit to correct starting region
+                
+                // // swap the input buffer with a fresh one
+                // let mut input_buf = Vec::with_capacity(MAX_VERTS);
+                // mem::swap(&mut input_samples, &mut input_buf);
+
+                // // allocate gpu memory for them
+                // // TODO: swap these out
+                // println!("added {} points", input_buf.len());
+                // let pathbuf = ControlPath::new(&self.context, input_buf);
+
+                // // commit the dirty one to heap
+                // input_buffers.push(pathbuf);
+                // cursor_commit = true;
+            }
+            
+            // if x1 + 5 < 1280 && x2 < 1280 && y1 < 720 && y2 + 10 < 720 {
+            //     // draw control point
+            // }
+
+            // let diffx = x2 - x1;
+            // let diffy = y2 - y1;
+            // println!("delta ({},{}), mag: {}", diffx, diffy, diffy-diffx);
+
+
             // composite frame
             let mut target = self.context.draw();
             target.clear_color(0.05, 0.05, 0.05, 1.0);
@@ -247,6 +355,8 @@ impl Engine {
             };
 
             // draw cursor
+            let (wx, wy) = Engine::world_to_unit(cursor_x as f64, cursor_y as f64);
+            
             let cursor_uni = uniform! {
                 ofs:   [wx as f32, wy as f32, 0.0f32], 
                 scale: 0.15f32,
