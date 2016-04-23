@@ -48,7 +48,7 @@ impl TextBlitter {
         ];
 
         let vbuf = glium::VertexBuffer::new(context, &shape)
-            .ok().expect("could not alloc vbuf");
+            .expect("could not alloc vbuf");
 
         let program = match glium::Program::from_source(context, TEXT_VRT, TEXT_FRG, None) {
             Ok(program) => program,
@@ -67,13 +67,13 @@ impl TextBlitter {
 
             println!("{} => {}", start,end);
 
-            let row: Vec<u8> = (&image[start..end]).iter().map(|byte| *byte).collect();
+            let row: Vec<u8> = (&image[start..end]).iter().cloned().collect();
             let fuck = texture::RawImage2d::from_raw_rgba(row, (256,16));
             sprite_rows.push(fuck);
         }
 
         let atlas_array = texture::texture2d_array::Texture2dArray::new(context,sprite_rows)
-            .ok().expect("could not uplaod texture array");
+            .expect("could not uplaod texture array");
 
         TextBlitter {
             atlas_array: atlas_array,
@@ -85,7 +85,7 @@ impl TextBlitter {
 
     pub fn draw(&self, text: &str, font_size: f32, ofs: (f32, f32), target: &mut glium::Frame) {
         let mapping: Vec<(f32,f32)> = text.chars()
-            .map(|cp| TextBlitter::ascii_to_ofs(cp))
+            .map(TextBlitter::ascii_to_ofs)
             .collect();
 
         // NOTE: there are two translation steps
@@ -107,7 +107,7 @@ impl TextBlitter {
 
 
         let mut ofs_x = 0.0;
-        for &(char_x, char_y) in mapping.iter() {
+        for &(char_x, char_y) in &mapping {
             let char_uni = uniform! {
                 atlas_array: self.atlas_array.sampled()
                     .minify_filter(MinifySamplerFilter::Nearest)
@@ -124,7 +124,7 @@ impl TextBlitter {
 
             target.draw(&self.vbuf, &self.indices, &self.program, &char_uni, &DrawParameters {
                 .. Default::default()
-            }).ok().expect("could not blit char example");
+            }).expect("could not blit character");
         }
     }
 
@@ -133,14 +133,14 @@ impl TextBlitter {
         
         assert!(cp.is_ascii());
         let sprite_ofs = match cp {
-            'A'...'P' => (cp as u8 - 'A' as u8,      0),
-            'Q'...'Z' => (cp as u8 - 'Q' as u8,      1),
-            'a'...'f' => (cp as u8 - 'a' as u8 + 10, 1),
-            'g'...'v' => (cp as u8 - 'g' as u8,      2),
-            'w'...'z' => (cp as u8 - 'w' as u8,      3),
+            'A'...'P' => (cp as u32 - 'A' as u32,      0),
+            'Q'...'Z' => (cp as u32 - 'Q' as u32,      1),
+            'a'...'f' => (cp as u32 - 'a' as u32 + 10, 1),
+            'g'...'v' => (cp as u32 - 'g' as u32,      2),
+            'w'...'z' => (cp as u32 - 'w' as u32,      3),
 
-            '1'...'9'  => ((cp as u8 - '1' as u8)  + 4, 3),
-            '0'        => (('9' as u8 - '0' as u8) + 4, 3),
+            '1'...'9'  => ((cp  as u32 - '1' as u32)  + 4, 3),
+            '0'        => (('9' as u32 - '0' as u32) + 4, 3),
 
             ' ' => ( 0, 7),
             '-' => (14, 3),

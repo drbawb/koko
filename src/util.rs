@@ -7,7 +7,7 @@ use std::path::Path;
 pub fn load_image_tga(path_text: &str) -> (Vec<u8>, (usize,usize)) {
     let path = Path::new(path_text);
     let mut file = File::open(path)
-        .ok().expect(&format!("could not find image file @ {:?}", path)[..]);
+        .expect(&format!("could not find image file @ {:?}", path)[..]);
 
     // read file into byte buffer
     let mut buf = vec![];
@@ -55,5 +55,5 @@ pub fn load_image_tga(path_text: &str) -> (Vec<u8>, (usize,usize)) {
     }
 
     assert!(rgba.len() == width * height * 4);
-    return (rgba, (width,height));
+    (rgba, (width,height))
 }

@@ -44,7 +44,7 @@ struct ControlPoint {
 impl ControlPath {
     pub fn new(context: &GlutinFacade, scanbox: V2, points: Vec<ControlPoint>) -> ControlPath {
         let vbuf_path = glium::VertexBuffer::empty_dynamic(context, points.len() * 6)
-            .ok().expect("could not alloc vbuf");
+            .expect("could not alloc vbuf");
 
         let corrected_samples = points.iter().map(|point| {
             let adj_x = (point.screen_xy.0 as f32 + (scanbox.0 as f32 / 2.0)) as i64;
@@ -155,10 +155,10 @@ impl Engine {
 
         
         let vbuf_cursor = glium::VertexBuffer::new(&self.context, &shape[..])
-            .ok().expect("could not alloc vbuf");
+            .expect("could not alloc vbuf");
         
         let mut vbuf_points = glium::VertexBuffer::empty_dynamic(&self.context, MAX_VERTS)
-            .ok().expect("could not alloc vbuf");
+            .expect("could not alloc vbuf");
 
         // current cursor state
         let mut cursor_x = 0;
@@ -262,7 +262,7 @@ impl Engine {
             };
 
             target.draw(&vbuf_cursor, &self.indices_tris, &self.program, &cursor_uni, &tri_params)
-                .ok().expect("could not blit cursor example");
+                .expect("could not blit cursor example");
 
             // draw control points
             {
@@ -278,7 +278,7 @@ impl Engine {
             }
 
             // inflate each control point to six verts
-            for point in input_samples.iter() {
+            for point in &input_samples {
                 let (wx, wy) = Engine::world_to_unit(point.screen_xy.0 as f64,
                                                      point.screen_xy.1 as f64);
 
@@ -288,7 +288,7 @@ impl Engine {
                 };
 
                 target.draw(&vbuf_points, &self.indices_tris, &self.program, &path_uni, &tri_params)
-                    .ok().expect("could not blit cursor example");
+                    .expect("could not blit cursor example");
             }
 
             // show frame time
@@ -333,7 +333,7 @@ impl Engine {
             self.draw_regions(&mut input_buffers, &mut target);
 
             target.finish()
-                .ok().expect("could not render frame");
+                .expect("could not render frame");
 
             // sleep for a bit if we made our deadline
             elapsed_time = frame_start_at.elapsed();
@@ -348,19 +348,19 @@ impl Engine {
     fn draw_regions(&mut self, paths: &mut Vec<ControlPath>, target: &mut glium::Frame) {
         let V2(ofs_x, ofs_y) = self.scanbox;
 
-        let wofs_x = ofs_x as f32 / 1280.0; // offset of the scanbox converted to the screen space unit square
-        let wofs_y = ofs_y as f32 /  720.0; // offset of the scanbox converted to the screen space unit square
+        let unit_ofs_x = ofs_x as f32 / 1280.0; // offset of the scanbox converted to the screen space unit square
+        let unit_ofs_y = ofs_y as f32 /  720.0; // offset of the scanbox converted to the screen space unit square
         
         for path in paths {
             let path_uni = uniform! {
-                ofs:   [-wofs_x, -wofs_y, 0.0f32],
+                ofs:   [-unit_ofs_x, -unit_ofs_y, 0.0f32],
                 scale: 1.0f32,
             };
             
             // inflate each control point to six verts
             path.draw();
             target.draw(&path.buffer, &self.indices_tris, &self.path_program, &path_uni, &Default::default())
-                .ok().expect("could not blit cursor example");
+                .expect("could not blit cursor example");
         }
 
     }

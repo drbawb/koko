@@ -9,12 +9,12 @@ pub enum Color {
 pub struct V2f(pub f64, pub f64);
 
 impl V2f {
-    pub fn len(&self) ->  f64 {
+    pub fn length(&self) ->  f64 {
         f64::sqrt(f64::powf(self.0, 2.0) + f64::powf(self.1, 2.0))
     }
 
     pub fn norm(&self) -> V2f {
-        let length = self.len();
+        let length = self.length();
 
         match length <= 0.0 {
             true  => V2f(0.0, 0.0),
