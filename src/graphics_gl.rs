@@ -1,6 +1,7 @@
 use glium::backend::glutin_backend::GlutinFacade;
 use glium::draw_parameters::DrawParameters;
 use glium::{self, texture, Surface};
+use glium::uniforms::{MinifySamplerFilter, MagnifySamplerFilter, SamplerWrapFunction};
 
 use util;
 
@@ -108,7 +109,11 @@ impl TextBlitter {
         let mut ofs_x = 0.0;
         for &(char_x, char_y) in mapping.iter() {
             let char_uni = uniform! {
-                atlas_array: self.atlas_array.sampled(),
+                atlas_array: self.atlas_array.sampled()
+                    .minify_filter(MinifySamplerFilter::Nearest)
+                    .magnify_filter(MagnifySamplerFilter::Nearest)
+                    .wrap_function(SamplerWrapFunction::Clamp),
+
                 c_pos: [ofs_x, 0.0, 0.0f32],
                 c_ofs: [char_x, char_y],
                 w_ofs: [ofs.0, ofs.1, 0.0f32],
