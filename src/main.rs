@@ -1,12 +1,12 @@
 #[macro_use] extern crate glium;
 
-pub mod engine_gl;
-pub mod graphics_gl;
+pub mod engine;
+pub mod graphics;
 pub mod input;
 pub mod units;
 pub mod util;
 
-use engine_gl::Engine;
+use engine::Engine;
 use glium::glutin;
 use glium::DisplayBuild;
 

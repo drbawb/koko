@@ -8,7 +8,7 @@ use glium::buffer::Content;
 use glium::glutin::{ElementState, Event, VirtualKeyCode as KeyCode};
 use glium::{self, Surface, VertexBuffer};
 
-use graphics_gl::{TextBlitter, Vert2};
+use graphics::{TextBlitter, Vert2};
 use input::Input;
 use units::{Color, V2};
 
