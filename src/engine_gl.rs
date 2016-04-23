@@ -193,7 +193,12 @@ impl Engine {
                 }
             }
 
-            // TODO: (?) deduplicate input against last input?
+
+            // handle user input
+            if self.controller.was_key_pressed(KeyCode::Escape) {
+                self.is_running = false;
+            }
+            
             // store user input into control point buffers
             let (wx, wy) = Engine::world_to_unit(cursor_x as f64, cursor_y as f64);
             if cursor_down {
@@ -215,8 +220,22 @@ impl Engine {
                 cursor_commit = true;
             }
 
-            if self.controller.was_key_pressed(KeyCode::Escape) {
-                self.is_running = false;
+            if self.controller.is_key_held(KeyCode::I) {
+                self.color.0 = self.color.0.wrapping_add(0x01);
+            } else if self.controller.is_key_held(KeyCode::O) {
+                self.color.1 = self.color.1.wrapping_add(0x01);
+            } else if self.controller.is_key_held(KeyCode::P) {
+                self.color.2 = self.color.2.wrapping_add(0x01);
+            }
+
+            if self.controller.is_key_held(KeyCode::Up) {
+                self.scanbox = self.scanbox - V2(0, 5);
+            } else if self.controller.is_key_held(KeyCode::Down) {
+                self.scanbox = self.scanbox + V2(0, 5);
+            } else if self.controller.is_key_held(KeyCode::Left) {
+                self.scanbox = self.scanbox - V2(5, 0);
+            } else if self.controller.is_key_held(KeyCode::Right) {
+                self.scanbox = self.scanbox + V2(5, 0);
             }
 
             // composite frame
@@ -286,13 +305,11 @@ impl Engine {
             // TODO: helper for this
             // strlen =>  (char width * text length) * scale
             let (hue_r, hue_g, hue_b) = self.color;
-            let buf = format!("{}ms, # regions: {}, # drawn: {}, sb @ {:?}, \
-                              e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
-                              time_ms, 
-                              42, 42,
-                              self.scanbox,
-                              self.brush,
-                              hue_r, hue_g, hue_b);
+            let buf_1 = format!("{}ms, # regions: {}, # drawn: {}, sb @ {:?}",
+                              time_ms, 42, 42, self.scanbox);
+
+            let buf_2 = format!("e = erase all, b = brush ({:?}), hue(i,o,p) => ({:02x},{:02x},{:02x})",
+                               self.brush, hue_r, hue_g, hue_b);
 
             // the text size is
             // (why /128 and not /256 ???)
@@ -300,14 +317,22 @@ impl Engine {
             // * num chars
             // * scale of text
             //
-            let text_scale = 0.25;
-            let strlen =
+            let text_scale = 0.30;
+            let strlen1 =
                 ((16.0 * (720.0 / 1280.0)) / 128.0)
-                * buf.len() as f32
+                * buf_1.len() as f32
                 * text_scale;
 
+            let strlen2 =
+                ((16.0 * (720.0 / 1280.0)) / 128.0)
+                * buf_2.len() as f32
+                * text_scale;
+            
+            let strheight = (16.0 / 128.0) * text_scale;
+
                 // ((16.0 / 128.0) * text_out.len() as f32) * text_scale;
-            text_blitter.draw(&buf[..], text_scale, (1.0 - strlen, 1.0), &mut target);
+            text_blitter.draw(&buf_1[..], text_scale, (1.0 - strlen1, 1.0), &mut target);
+            text_blitter.draw(&buf_2[..], text_scale, (1.0 - strlen2, 1.0 - strheight), &mut target);
 
             target.finish()
                 .ok().expect("could not render frame");
