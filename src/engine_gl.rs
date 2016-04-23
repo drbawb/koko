@@ -174,7 +174,7 @@ impl Engine {
         let mut cursor_y = 0;
 
         // control point buffers
-        let mut regions = vec![];
+        let mut regions = vec![Region::new()];
         let mut input_buffers: Vec<ControlPath>  = vec![];
         let mut input_samples: Vec<ControlPoint> = Vec::with_capacity(MAX_VERTS);
         let mut cursor_commit = true;
@@ -229,69 +229,77 @@ impl Engine {
             }
 
             if self.controller.is_key_held(KeyCode::Up) {
-                self.scanbox = self.scanbox - V2(0, 5);
-            } else if self.controller.is_key_held(KeyCode::Down) {
                 self.scanbox = self.scanbox + V2(0, 5);
+            } else if self.controller.is_key_held(KeyCode::Down) {
+                self.scanbox = self.scanbox - V2(0, 5);
             } else if self.controller.is_key_held(KeyCode::Left) {
                 self.scanbox = self.scanbox - V2(5, 0);
             } else if self.controller.is_key_held(KeyCode::Right) {
                 self.scanbox = self.scanbox + V2(5, 0);
             }
 
-            // regrow the region allocation if necessary
-            let V2(rx, ry) = self.scanbox + V2(1280,720);
+
+            // alloc new region
+            let V2(rx,ry) = self.scanbox + V2(1280, 720);
             let region_sqrt = (regions.len() as f64).sqrt();
-            if (rx as f64 > region_sqrt * 1280.0) || (ry as f64 > region_sqrt *  720.0) {
-                println!("need to regrow right!");
+            if rx as f64 > (region_sqrt * 1280.0) || ry as f64 > (region_sqrt * 720.0){
+                println!("growing up/right");
                 let pitch = (region_sqrt + 1.0) as usize;
                 let next_square = pitch * pitch;
-               
-                // swap in the newly regrown buffer
+
                 let mut buf = Vec::with_capacity(next_square);
                 mem::swap(&mut regions, &mut buf);
                 let mut old_drain = buf.into_iter();
 
-                // copy old / allocate new
                 for row in 0..pitch {
                     for col in 0..pitch {
                         if (row >= pitch - 1) || (col >= pitch - 1) {
                             regions.push(Region::new());
                         } else {
-                            regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
+                            regions.push(old_drain.next().expect("ran out of regions to copy during regrow !!!"));
                         }
                     }
                 }
             }
 
-            // TODO: can we collapse this with the previous case?
-            // if they pan left, trick them into thinking had canvases there
             if (self.scanbox.0 < 0) || (self.scanbox.1 < 0) {
-                println!("need to regrow left!");
+                println!("need to regrow left/down");
                 let pitch = (region_sqrt + 1.0) as usize;
                 let next_square = pitch * pitch;
-               
-                // swap in the newly regrown buffer
+
                 let mut buf = Vec::with_capacity(next_square);
                 mem::swap(&mut regions, &mut buf);
                 let mut old_drain = buf.into_iter();
 
-                // TODO: this is _a lot_ more expensive in the new engine !!!
-                // copying a lot more than a pointer to vram, copying the whole list
-                // of control points !!!
-                //
-                // copy old / allocate new
+                let mut idx = 0;
                 for row in 0..pitch {
                     for col in 0..pitch {
                         if (row == 0) || (col == 0) {
+                            println!("[{},{}] => new", row, col);
                             regions.push(Region::new());
                         } else {
-                            regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
+                            println!("[{},{}] => {}", row, col, idx);
+                            idx += 1;
+                            regions.push(old_drain.next().expect("ran out of regions to copy during regrow !!!"));
                         }
                     }
                 }
 
-                self.scanbox = V2(1280,720) + self.scanbox;
+                self.scanbox = V2(1280, 720) + self.scanbox;
             }
+
+
+
+            // // copy old / allocate new
+            // for row in 0..pitch {
+            //     for col in 0..pitch {
+            //         if (row >= pitch - 1) || (col >= pitch - 1) {
+            //             regions.push(Region::new());
+            //         } else {
+            //             regions.push(old_drain.next().expect("ran out of regions to copy during regrow!"));
+            //         }
+            //     }
+            // }
 
             // handle cursor input
             //
@@ -310,8 +318,8 @@ impl Engine {
             let ridx = (row * pitch) + col; // row * 3rows/col + col
 
             // blit in that region instead
-            println!("[{}], row: {}, col: {}", ridx, row, col);
-            println!("real ({},{})", x1, y1);
+            //println!("[{}], row: {}, col: {}", ridx, row, col);
+            //println!("real ({},{})", x1, y1);
             let x1 = match x1 > 1280 {
                 true  => x1 % (1280 * col+1),
                 false => x1,
@@ -321,7 +329,7 @@ impl Engine {
                 true  => y1 % ( 720 * row+1 ),
                 false => y1,
             };
-            println!("adj ({},{})", x1, y1);
+            //println!("adj ({},{})", x1, y1);
 
 
             // store user input into control point buffer for the computed region
@@ -341,6 +349,7 @@ impl Engine {
                 let row  = input_buf[0].screen_xy.1 /  720;
                 let ridx = (row * pitch) + col; // row * 3rows/col + col
 
+                // TODO: coordinate needs to be adjusted if it crosses regions as well
                 // commit dirty one to heap
                 println!("added {} points", input_buf.len());
                 let pathbuf = ControlPath::new(&self.context, input_buf);
@@ -485,6 +494,7 @@ impl Engine {
                 let x = (col * 1280) as i64;
                 let y = (row *  720) as i64;
                 let ridx = col + (row * pitch);
+                println!("ridx: {}", ridx);
 
                 let top1   = y;
                 let bot1   = y + 720;
@@ -494,11 +504,17 @@ impl Engine {
                 let in_scanbox = right1 >= left0 && left1 < right0
                     && top1 < bot0 && bot1 >= top0;
 
-                if in_scanbox {
-                    let (wox, woy) = Engine::world_to_unit(ofs_x as f64, ofs_y as f64);
+                if true {
+                    let wofs_x = (ofs_x as f32 / 1280.0);
+                    let wofs_y = (ofs_y as f32 /  720.0);
+
+                    let bofs_x = (col as f32 * 1280.0) / 1280.0;
+                    let bofs_y = (row as f32 *  720.0) /  720.0;
+                    println!("ofs: ({},{}), wofs: ({},{})", bofs_x, bofs_y, wofs_x, wofs_y);
+
                     for path in &mut regions[ridx].paths {
                         let path_uni = uniform! {
-                            ofs:   [wox as f32, woy as f32, 0.0f32], 
+                            ofs:   [-bofs_x + wofs_x, bofs_y - wofs_y, 0.0f32], // TODO: check why X needs to be inverted
                             scale: 1.0f32,
                         };
 
