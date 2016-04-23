@@ -12,7 +12,8 @@ pub fn load_image_tga(path_text: &str) -> (Vec<u8>, (usize,usize)) {
     // read file into byte buffer
     let mut buf = vec![];
     let mut ofs = 0;
-    file.read_to_end(&mut buf);
+    file.read_to_end(&mut buf)
+        .expect("i/o error reading text sprite sheet");
 
     assert!(buf[0] == 0); // no id field
     assert!(buf[1] == 0); // no color map

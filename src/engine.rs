@@ -1,10 +1,8 @@
-use std::collections::LinkedList;
 use std::mem;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use glium::backend::glutin_backend::GlutinFacade;
-use glium::buffer::Content;
 use glium::glutin::{ElementState, Event, VirtualKeyCode as KeyCode};
 use glium::{self, Surface, VertexBuffer};
 
@@ -22,6 +20,7 @@ pub static COLOR_BG:  Color = Color::RGB(0,0,0);
 pub static COLOR_FPS: Color = Color::RGB(255,255,0);
 pub static COLOR_PEN: Color = Color::RGB(125, 0, 175);
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 enum BrushMode {
     Normal,
@@ -44,7 +43,7 @@ struct ControlPoint {
 
 impl ControlPath {
     pub fn new(context: &GlutinFacade, scanbox: V2, points: Vec<ControlPoint>) -> ControlPath {
-        let mut vbuf_path = glium::VertexBuffer::empty_dynamic(context, points.len() * 6)
+        let vbuf_path = glium::VertexBuffer::empty_dynamic(context, points.len() * 6)
             .ok().expect("could not alloc vbuf");
 
         let corrected_samples = points.iter().map(|point| {
@@ -98,13 +97,12 @@ pub struct Engine {
     controller: Input,
 
     indices_tris: glium::index::NoIndices,
-    indices_pts:  glium::index::NoIndices,
+    _indices_pts: glium::index::NoIndices, // NOTE: unused; but ocasionally useful for debugging
     program:      glium::Program,
     path_program: glium::Program,
 
     brush:   BrushMode,
     color:   (u8, u8, u8),
-    cursor:  V2,
     scanbox: V2,
 }
 
@@ -131,20 +129,18 @@ impl Engine {
             controller: Input::new(),
 
             indices_tris: indices,
-            indices_pts:  indices_pts,
+            _indices_pts: indices_pts,
             program:      basic_shader,
             path_program: flat_shader,
 
             brush:   BrushMode::Squareish,
             color:   (125, 0, 175),
-            cursor:  V2(0, 0),
             scanbox: V2(0,0),
         }
     }
 
     pub fn run(&mut self) {
         let target_fps_ms = Duration::from_millis(1000 / 120); // TODO: const fn?
-        let game_start_at = Instant::now();
 
         let mut frame_start_at;
         let mut elapsed_time;
@@ -158,7 +154,7 @@ impl Engine {
         ];
 
         
-        let mut vbuf_cursor = glium::VertexBuffer::new(&self.context, &shape[..])
+        let vbuf_cursor = glium::VertexBuffer::new(&self.context, &shape[..])
             .ok().expect("could not alloc vbuf");
         
         let mut vbuf_points = glium::VertexBuffer::empty_dynamic(&self.context, MAX_VERTS)
@@ -176,8 +172,6 @@ impl Engine {
 
         // text renedring
         let text_blitter = TextBlitter::new(&mut self.context);
-        let mut text_count  = 0;
-        let mut frame_count = 0;
 
         while self.is_running {
             // cut new frame
@@ -234,14 +228,9 @@ impl Engine {
 
 
             // handle cursor input
+            // store the user input into screen-relative control points
+            // and then offset them based on the current scanbox.
             //
-            // we convert the control point to it's unit-position
-            // inside a particular region of the scanbox
-            //
-            let brush = self.brush;
-            let V2(ofs_x, ofs_y) = self.scanbox;
-
-            // store user input into control point buffer for the computed region
             if cursor_down {
                 input_samples.push(ControlPoint {
                     screen_xy: V2(cursor_x as i64, cursor_y as i64),
@@ -358,13 +347,9 @@ impl Engine {
 
     fn draw_regions(&mut self, paths: &mut Vec<ControlPath>, target: &mut glium::Frame) {
         let V2(ofs_x, ofs_y) = self.scanbox;
-        let top0   = ofs_y;
-        let bot0   = ofs_y + 720;
-        let left0  = ofs_x;
-        let right0 = ofs_x + 1280;
 
-        let wofs_x = (ofs_x as f32 / 1280.0); // offset of the scanbox converted to the screen space unit square
-        let wofs_y = (ofs_y as f32 /  720.0); // offset of the scanbox converted to the screen space unit square
+        let wofs_x = ofs_x as f32 / 1280.0; // offset of the scanbox converted to the screen space unit square
+        let wofs_y = ofs_y as f32 /  720.0; // offset of the scanbox converted to the screen space unit square
         
         for path in paths {
             let path_uni = uniform! {
