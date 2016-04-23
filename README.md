@@ -25,8 +25,7 @@ assume nothing works and that everything is broken.
 Koko is written in `rust`, you will need the following:
 
 - a working rust toolchain w/ `rustc` and `cargo`
-- the SDL2 libraries and development headers for your platform
-- as well as the SDL2_ttf libraries
+- GPU & Drivers supporting OpenGL 3.1 and newer
 
 Once you have that, just clone this project and run:
 
