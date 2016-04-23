@@ -87,7 +87,7 @@ struct ControlPoint {
 }
 
 struct Region {
-    paths: Vec<ControlPath>, // TODO: paths can span regions
+    pub paths: Vec<ControlPath>, // TODO: paths can span regions
 }
 
 impl Region {
@@ -101,7 +101,12 @@ pub struct Engine {
 
     context:    GlutinFacade,
     controller: Input,
-    
+
+    indices_tris: glium::index::NoIndices,
+    indices_pts:  glium::index::NoIndices,
+    program:      glium::Program,
+    path_program: glium::Program,
+
     brush:   BrushMode,
     color:   (u8, u8, u8),
     cursor:  V2,
@@ -110,11 +115,30 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(gl_ctx: GlutinFacade) -> Engine {
+
+        let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
+        let indices_pts = glium::index::NoIndices(glium::index::PrimitiveType::Points);
+
+        let basic_shader = match glium::Program::from_source(&gl_ctx, BASIC_VRT, BASIC_FRG, None) {
+            Ok(program) => program,
+            Err(msg) => panic!("could not load shader: {}", msg),
+        };
+
+        let flat_shader = match glium::Program::from_source(&gl_ctx, FLAT_VRT, BASIC_FRG, None) {
+            Ok(program) => program,
+            Err(msg) => panic!("could not load shader: {}", msg),
+        };
+
         Engine {
             is_running: true,
 
             context:    gl_ctx,
             controller: Input::new(),
+
+            indices_tris: indices,
+            indices_pts:  indices_pts,
+            program:      basic_shader,
+            path_program: flat_shader,
 
             brush:   BrushMode::Squareish,
             color:   (125, 0, 175),
@@ -138,25 +162,12 @@ impl Engine {
             Vert2 { pos: [ 0.0, -1.0, 0.0], color: [1.0, 0.0, 0.0] },
         ];
 
-        let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-        let indices_pts = glium::index::NoIndices(glium::index::PrimitiveType::Points);
         
         let mut vbuf_cursor = glium::VertexBuffer::new(&self.context, &shape[..])
             .ok().expect("could not alloc vbuf");
         
         let mut vbuf_points = glium::VertexBuffer::empty_dynamic(&self.context, MAX_VERTS)
             .ok().expect("could not alloc vbuf");
-
-
-        let program = match glium::Program::from_source(&self.context, BASIC_VRT, BASIC_FRG, None) {
-            Ok(program) => program,
-            Err(msg) => panic!("could not load shader: {}", msg),
-        };
-
-        let path_program = match glium::Program::from_source(&self.context, FLAT_VRT, BASIC_FRG, None) {
-            Ok(program) => program,
-            Err(msg) => panic!("could not load shader: {}", msg),
-        };
 
         // current cursor state
         let mut cursor_x = 0;
@@ -293,10 +304,9 @@ impl Engine {
             let x1 = cursor_x as i64 + ofs_x;
             let y1 = cursor_y as i64 + ofs_y;
 
-            // compute ridx of adjusted coordinate
             let pitch = (regions.len() as f64).sqrt() as i64;
             let col  = x1 / 1280;
-            let row  = y1 / 720;
+            let row  = y1 /  720;
             let ridx = (row * pitch) + col; // row * 3rows/col + col
 
             // blit in that region instead
@@ -321,20 +331,21 @@ impl Engine {
                     screen_xy: V2(x1 as i64, y1 as i64),
                 });
             } else if !cursor_down && !cursor_commit {
-                // TODO: commit to correct starting region
-                
-                // // swap the input buffer with a fresh one
-                // let mut input_buf = Vec::with_capacity(MAX_VERTS);
-                // mem::swap(&mut input_samples, &mut input_buf);
+                // swap the input buffer with a fresh one
+                let mut input_buf = Vec::with_capacity(MAX_VERTS);
+                mem::swap(&mut input_samples, &mut input_buf);
 
-                // // allocate gpu memory for them
-                // // TODO: swap these out
-                // println!("added {} points", input_buf.len());
-                // let pathbuf = ControlPath::new(&self.context, input_buf);
+                // compute starting ridx
+                let pitch = (regions.len() as f64).sqrt() as i64;
+                let col  = input_buf[0].screen_xy.0 / 1280;
+                let row  = input_buf[0].screen_xy.1 /  720;
+                let ridx = (row * pitch) + col; // row * 3rows/col + col
 
-                // // commit the dirty one to heap
-                // input_buffers.push(pathbuf);
-                // cursor_commit = true;
+                // commit dirty one to heap
+                println!("added {} points", input_buf.len());
+                let pathbuf = ControlPath::new(&self.context, input_buf);
+                regions[ridx as usize].paths.push(pathbuf);
+                cursor_commit = true;
             }
             
             // if x1 + 5 < 1280 && x2 < 1280 && y1 < 720 && y2 + 10 < 720 {
@@ -362,7 +373,7 @@ impl Engine {
                 scale: 0.15f32,
             };
 
-            target.draw(&vbuf_cursor, &indices, &program, &cursor_uni, &tri_params)
+            target.draw(&vbuf_cursor, &self.indices_tris, &self.program, &cursor_uni, &tri_params)
                 .ok().expect("could not blit cursor example");
 
             // draw control points
@@ -388,7 +399,7 @@ impl Engine {
                     scale: 0.015f32,
                 };
 
-                target.draw(&vbuf_points, &indices, &program, &path_uni, &tri_params)
+                target.draw(&vbuf_points, &self.indices_tris, &self.program, &path_uni, &tri_params)
                     .ok().expect("could not blit cursor example");
             }
 
@@ -401,7 +412,7 @@ impl Engine {
 
                 // inflate each control point to six verts
                 path.draw();
-                target.draw(&path.buffer, &indices, &path_program, &path_uni, &tri_params)
+                target.draw(&path.buffer, &self.indices_tris, &self.path_program, &path_uni, &tri_params)
                     .ok().expect("could not blit cursor example");
             }
 
@@ -416,7 +427,7 @@ impl Engine {
             // strlen =>  (char width * text length) * scale
             let (hue_r, hue_g, hue_b) = self.color;
             let buf_1 = format!("{}ms, # regions: {}, # drawn: {}, sb @ {:?}",
-                              time_ms, 42, 42, self.scanbox);
+                              time_ms, regions.len(), 0, self.scanbox);
 
             let buf_2 = format!("e = erase all, b = brush ({:?}), hue(i,o,p) => ({:02x},{:02x},{:02x})",
                                self.brush, hue_r, hue_g, hue_b);
@@ -444,6 +455,8 @@ impl Engine {
             text_blitter.draw(&buf_1[..], text_scale, (1.0 - strlen1, 1.0), &mut target);
             text_blitter.draw(&buf_2[..], text_scale, (1.0 - strlen2, 1.0 - strheight), &mut target);
 
+            self.draw_regions(&mut regions, &mut target);
+
             target.finish()
                 .ok().expect("could not render frame");
 
@@ -454,6 +467,48 @@ impl Engine {
             } else { target_fps_ms - elapsed_time };
 
             thread::sleep(sleep_time);
+        }
+    }
+
+    fn draw_regions(&mut self, regions: &mut Vec<Region>, target: &mut glium::Frame) {
+        let V2(ofs_x, ofs_y) = self.scanbox;
+        let top0   = ofs_y;
+        let bot0   = ofs_y + 720;
+        let left0  = ofs_x;
+        let right0 = ofs_x + 1280;
+
+        let pitch = (regions.len() as f64).sqrt() as usize;
+
+        for row in 0..pitch {
+            for col in 0..pitch {
+                // (0,0), (0, 720)
+                let x = (col * 1280) as i64;
+                let y = (row *  720) as i64;
+                let ridx = col + (row * pitch);
+
+                let top1   = y;
+                let bot1   = y + 720;
+                let left1  = x;
+                let right1 = x + 1280;
+
+                let in_scanbox = right1 >= left0 && left1 < right0
+                    && top1 < bot0 && bot1 >= top0;
+
+                if in_scanbox {
+                    let (wox, woy) = Engine::world_to_unit(ofs_x as f64, ofs_y as f64);
+                    for path in &mut regions[ridx].paths {
+                        let path_uni = uniform! {
+                            ofs:   [wox as f32, woy as f32, 0.0f32], 
+                            scale: 1.0f32,
+                        };
+
+                        // inflate each control point to six verts
+                        path.draw();
+                        target.draw(&path.buffer, &self.indices_tris, &self.path_program, &path_uni, &Default::default())
+                            .ok().expect("could not blit cursor example");
+                    }
+                }
+            }
         }
     }
 
