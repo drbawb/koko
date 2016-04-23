@@ -1,5 +1,10 @@
 use std::ops::{Add, Sub};
 
+pub enum Color {
+    RGB(u8, u8, u8),
+    RGBA(u8, u8, u8, u8),
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct V2f(pub f64, pub f64);
 

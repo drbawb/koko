@@ -142,9 +142,19 @@ impl TextBlitter {
             '1'...'9'  => ((cp as u8 - '1' as u8)  + 4, 3),
             '0'        => (('9' as u8 - '0' as u8) + 4, 3),
 
-            ' ' => (0, 7),
+            ' ' => ( 0, 7),
+            ',' => ( 0, 4),
+            '.' => ( 1, 4),
+            '@' => ( 5, 4),
+            '#' => ( 6, 4),
+            '(' => (12, 4),
+            ')' => (13, 4),
+            '=' => (15, 4),
+            ':' => ( 2, 5),
+            '<' => (14, 5),
+            '>' => (15, 5),
 
-            _ => panic!("unhandled character in spritemap"),
+            token => panic!("unhandled character in spritemap: {}", token),
         };
 
         let char_x: f32 =  sprite_ofs.0 as f32 * (1.0 / 16.0); // index into the page

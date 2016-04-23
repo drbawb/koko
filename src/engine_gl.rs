@@ -10,13 +10,25 @@ use glium::{self, Surface, VertexBuffer};
 
 use graphics_gl::{TextBlitter, Vert2};
 use input::Input;
-use units::V2;
+use units::{Color, V2};
 
 static BASIC_VRT: &'static str = include_str!("shaders/basic.v.glsl");
 static BASIC_FRG: &'static str = include_str!("shaders/basic.f.glsl");
 static FLAT_VRT:  &'static str = include_str!("shaders/flat.v.glsl");
 
 static MAX_VERTS: usize = 256;
+
+pub static COLOR_BG:  Color = Color::RGB(0,0,0);
+pub static COLOR_FPS: Color = Color::RGB(255,255,0);
+pub static COLOR_PEN: Color = Color::RGB(125, 0, 175);
+
+#[derive(Copy, Clone, Debug)]
+enum BrushMode {
+    Normal,
+    Squareish,
+    WowSoEdgy,
+    Eraser,
+}
 
 struct ControlPath {
     needs_render: bool,
@@ -79,6 +91,11 @@ pub struct Engine {
 
     context:    GlutinFacade,
     controller: Input,
+    
+    brush:   BrushMode,
+    color:   (u8, u8, u8),
+    cursor:  V2,
+    scanbox: V2,
 }
 
 impl Engine {
@@ -88,6 +105,11 @@ impl Engine {
 
             context:    gl_ctx,
             controller: Input::new(),
+
+            brush:   BrushMode::Squareish,
+            color:   (125, 0, 175),
+            cursor:  V2(0, 0),
+            scanbox: V2(0,0),
         }
     }
 
@@ -140,7 +162,6 @@ impl Engine {
         let text_blitter = TextBlitter::new(&mut self.context);
         let mut text_count  = 0;
         let mut frame_count = 0;
-        let mut text_scale  = 0.0;
 
         while self.is_running {
             // cut new frame
@@ -196,12 +217,6 @@ impl Engine {
 
             if self.controller.was_key_pressed(KeyCode::Escape) {
                 self.is_running = false;
-            }
-
-            if self.controller.was_key_pressed(KeyCode::Up) {
-                text_scale += 0.05;
-            } else if self.controller.was_key_pressed(KeyCode::Down) {
-                text_scale -= 0.05;
             }
 
             // composite frame
@@ -270,7 +285,14 @@ impl Engine {
 
             // TODO: helper for this
             // strlen =>  (char width * text length) * scale
-            let text_out = format!("frame time {}ms", time_ms);
+            let (hue_r, hue_g, hue_b) = self.color;
+            let buf = format!("{}ms, # regions: {}, # drawn: {}, sb @ {:?}, \
+                              e = erase all, b = brush ({:?}), hue(i,o,p) => ({:x},{:x},{:x})", 
+                              time_ms, 
+                              42, 42,
+                              self.scanbox,
+                              self.brush,
+                              hue_r, hue_g, hue_b);
 
             // the text size is
             // (why /128 and not /256 ???)
@@ -278,13 +300,14 @@ impl Engine {
             // * num chars
             // * scale of text
             //
+            let text_scale = 0.25;
             let strlen =
                 ((16.0 * (720.0 / 1280.0)) / 128.0)
-                * text_out.len() as f32
+                * buf.len() as f32
                 * text_scale;
 
                 // ((16.0 / 128.0) * text_out.len() as f32) * text_scale;
-            text_blitter.draw(&text_out[..], text_scale, (1.0 - strlen, 1.0), &mut target);
+            text_blitter.draw(&buf[..], text_scale, (1.0 - strlen, 1.0), &mut target);
 
             target.finish()
                 .ok().expect("could not render frame");
