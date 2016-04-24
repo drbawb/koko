@@ -163,12 +163,13 @@ impl Engine {
         // current cursor state
         let mut cursor_x = 0;
         let mut cursor_y = 0;
-
+        let mut cursor_commit = true;
+        let mut cursor_down   = false;
+        
         // control point buffers
         let mut input_buffers: Vec<ControlPath>  = vec![];
         let mut input_samples: Vec<ControlPoint> = Vec::with_capacity(MAX_VERTS);
-        let mut cursor_commit = true;
-        let mut cursor_down   = false;
+        let mut verts = 0;
 
         // text renedring
         let text_blitter = TextBlitter::new(&mut self.context);
@@ -240,6 +241,7 @@ impl Engine {
                 let mut input_buf = Vec::with_capacity(MAX_VERTS);
                 mem::swap(&mut input_samples, &mut input_buf);
 
+                verts += input_buf.len() * 6;
                 let pathbuf = ControlPath::new(&self.context, self.scanbox, input_buf);
                 input_buffers.push(pathbuf);
                 cursor_commit = true;
@@ -301,8 +303,8 @@ impl Engine {
             // TODO: helper for this
             // strlen =>  (char width * text length) * scale
             let (hue_r, hue_g, hue_b) = self.color;
-            let buf_1 = format!("{}ms, # paths: {}, # drawn: {}, sb @ {:?}",
-                              time_ms, input_buffers.len(), 0, self.scanbox);
+            let buf_1 = format!("{}ms [# paths: {}]  [# verts: {}] [sb @ {:?}]",
+                              time_ms, input_buffers.len(), verts, self.scanbox);
 
             let buf_2 = format!("e = erase all, b = brush ({:?}), hue(i,o,p) => ({:02x},{:02x},{:02x})",
                                self.brush, hue_r, hue_g, hue_b);
@@ -313,7 +315,7 @@ impl Engine {
             // * num chars
             // * scale of text
             //
-            let text_scale = 0.30;
+            let text_scale = 0.25;
             let strlen1 =
                 ((16.0 * (720.0 / 1280.0)) / 128.0)
                 * buf_1.len() as f32
@@ -330,7 +332,7 @@ impl Engine {
             text_blitter.draw(&buf_1[..], text_scale, (1.0 - strlen1, 1.0), &mut target);
             text_blitter.draw(&buf_2[..], text_scale, (1.0 - strlen2, 1.0 - strheight), &mut target);
 
-            self.draw_regions(&mut input_buffers, &mut target);
+            self.draw_regions(&mut input_buffers[..], &mut target);
 
             target.finish()
                 .expect("could not render frame");
@@ -345,7 +347,7 @@ impl Engine {
         }
     }
 
-    fn draw_regions(&mut self, paths: &mut Vec<ControlPath>, target: &mut glium::Frame) {
+    fn draw_regions(&mut self, paths: &mut [ControlPath], target: &mut glium::Frame) {
         let V2(ofs_x, ofs_y) = self.scanbox;
 
         let unit_ofs_x = ofs_x as f32 / 1280.0; // offset of the scanbox converted to the screen space unit square
