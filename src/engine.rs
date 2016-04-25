@@ -46,6 +46,14 @@ impl ControlPath {
         let vbuf_path = glium::VertexBuffer::empty_dynamic(context, points.len() * 6)
             .expect("could not alloc vbuf");
 
+        // NOTE: correct the cursor's position in the unit square to it's relative position
+        //       by adding the current offset of the scanbox
+        //
+        // TODO: would be nice if the extremes of this path were stored in some sort
+        //       of spatial data-structure so we can quickly query if the path is currently
+        //       inside the scanbox -- this would enable some optimizations like skipping
+        //       rendering and possibly removing out-of-bounds paths from VRAM.
+        //
         let corrected_samples = points.iter().map(|point| {
             let adj_x = (point.screen_xy.0 as f32 + (scanbox.0 as f32 / 2.0)) as i64;
             let adj_y = (point.screen_xy.1 as f32 - (scanbox.1 as f32 / 2.0)) as i64;
@@ -68,7 +76,8 @@ impl ControlPath {
 
         self.buffer.invalidate();
         let mut writer = self.buffer.map_write();
-        let fudge = 10.0 / 720.0;
+        let fudge_x = 7.5 / 1280.0;
+        let fudge_y = 7.5 /  720.0;
         let mut ofs = 0;
         for point in &self.samples {
             let (wx, wy) = {
@@ -76,12 +85,13 @@ impl ControlPath {
                 let adj_y = (point.screen_xy.1 as f32 / 360.0) * 1.0;
                 ( (adj_x - 1.0), -(adj_y - 1.0) )
             };
-            writer.set(ofs + 0, Vert2 { pos: [        wx,        wy,   0.0], color: [0.75, 0.0, 0.5] });
-            writer.set(ofs + 1, Vert2 { pos: [   wx+fudge,       wy,   0.0], color: [0.75, 0.0, 0.5] });
-            writer.set(ofs + 2, Vert2 { pos: [         wx,  wy-fudge,  0.0], color: [0.75, 0.0, 0.5] });
-            writer.set(ofs + 3, Vert2 { pos: [         wx,  wy-fudge,  0.0], color: [0.75, 0.0, 0.5] });
-            writer.set(ofs + 4, Vert2 { pos: [   wx+fudge,  wy-fudge,  0.0], color: [0.75, 0.0, 0.5] });
-            writer.set(ofs + 5, Vert2 { pos: [   wx+fudge,        wy,   0.0], color: [0.75, 0.0, 0.5] });
+
+            writer.set(ofs + 0, Vert2 { pos: [ wx-fudge_x, wy+fudge_y,  0.0], color: [0.75, 0.0, 0.5] });
+            writer.set(ofs + 1, Vert2 { pos: [ wx+fudge_x, wy+fudge_y,  0.0], color: [0.75, 0.0, 0.5] });
+            writer.set(ofs + 2, Vert2 { pos: [ wx-fudge_x, wy-fudge_y,  0.0], color: [0.75, 0.0, 0.5] });
+            writer.set(ofs + 3, Vert2 { pos: [ wx-fudge_x, wy-fudge_y,  0.0], color: [0.75, 0.0, 0.5] });
+            writer.set(ofs + 4, Vert2 { pos: [ wx+fudge_x, wy-fudge_y,  0.0], color: [0.75, 0.0, 0.5] });
+            writer.set(ofs + 5, Vert2 { pos: [ wx+fudge_x, wy+fudge_y,  0.0], color: [0.75, 0.0, 0.5] });
             
             ofs += 6;
         }
