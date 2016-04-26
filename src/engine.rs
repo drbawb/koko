@@ -32,8 +32,9 @@ enum BrushMode {
 struct ControlPath {
     needs_render: bool,
 
-    pub buffer: VertexBuffer<Vert2>,
+    pub buffer:  VertexBuffer<Vert2>,
     pub samples: Vec<ControlPoint>,
+    pub scale:   f32,
 }
 
 /// Represents a mouse-input sample from some brush
@@ -42,7 +43,7 @@ struct ControlPoint {
 }
 
 impl ControlPath {
-    pub fn new(context: &GlutinFacade, scanbox: V2, points: Vec<ControlPoint>) -> ControlPath {
+    pub fn new(context: &GlutinFacade, scale: f32, scanbox: V2, points: Vec<ControlPoint>) -> ControlPath {
         let vbuf_path = glium::VertexBuffer::empty_dynamic(context, points.len() * 6)
             .expect("could not alloc vbuf");
 
@@ -55,10 +56,10 @@ impl ControlPath {
         //       rendering and possibly removing out-of-bounds paths from VRAM.
         //
         let corrected_samples = points.iter().map(|point| {
-            let adj_x = (point.screen_xy.0 as f32 + (scanbox.0 as f32 / 2.0)) as i64;
-            let adj_y = (point.screen_xy.1 as f32 - (scanbox.1 as f32 / 2.0)) as i64;
+            let adj_x = point.screen_xy.0 as f32 + (scanbox.0 as f32 / 2.0);
+            let adj_y = point.screen_xy.1 as f32 - (scanbox.1 as f32 / 2.0);
 
-            ControlPoint { screen_xy: V2(adj_x, adj_y) }
+            ControlPoint { screen_xy: V2(adj_x as i64, adj_y as i64) }
         }).collect();
 
         ControlPath {
@@ -66,6 +67,7 @@ impl ControlPath {
 
             buffer:  vbuf_path,
             samples: corrected_samples,
+            scale: scale,
         }
     }
 
@@ -83,7 +85,10 @@ impl ControlPath {
             let (wx, wy) = {
                 let adj_x = (point.screen_xy.0 as f32 / 360.0) * 720.0 / 1280.0;
                 let adj_y = (point.screen_xy.1 as f32 / 360.0) * 1.0;
-                ( (adj_x - 1.0), -(adj_y - 1.0) )
+
+                let inv_scale = 1.0 / self.scale;
+
+                ( ((adj_x - 1.0) * inv_scale), -((adj_y - 1.0) * inv_scale) )
             };
 
             writer.set(ofs + 0, Vert2 { pos: [ wx-fudge_x, wy+fudge_y,  0.0], color: [0.75, 0.0, 0.5] });
@@ -113,6 +118,7 @@ pub struct Engine {
 
     brush:   BrushMode,
     color:   (u8, u8, u8),
+    scale:   f32,
     scanbox: V2,
 }
 
@@ -145,6 +151,7 @@ impl Engine {
 
             brush:   BrushMode::Squareish,
             color:   (125, 0, 175),
+            scale:   1.0,
             scanbox: V2(0,0),
         }
     }
@@ -218,6 +225,13 @@ impl Engine {
             if self.controller.was_key_pressed(KeyCode::Escape) {
                 self.is_running = false;
             }
+
+            if self.controller.is_key_held(KeyCode::Equals) {
+                self.scale += 0.005;
+
+            } else if self.controller.is_key_held(KeyCode::Minus) {
+                self.scale -= 0.005;
+            }
             
             if self.controller.is_key_held(KeyCode::I) {
                 self.color.0 = self.color.0.wrapping_add(0x01);
@@ -252,7 +266,7 @@ impl Engine {
                 mem::swap(&mut input_samples, &mut input_buf);
 
                 verts += input_buf.len() * 6;
-                let pathbuf = ControlPath::new(&self.context, self.scanbox, input_buf);
+                let pathbuf = ControlPath::new(&self.context, self.scale, self.scanbox, input_buf);
                 input_buffers.push(pathbuf);
                 cursor_commit = true;
             }
@@ -313,8 +327,8 @@ impl Engine {
             // TODO: helper for this
             // strlen =>  (char width * text length) * scale
             let (hue_r, hue_g, hue_b) = self.color;
-            let buf_1 = format!("{}ms [# paths: {}]  [# verts: {}] [sb @ {:?}]",
-                              time_ms, input_buffers.len(), verts, self.scanbox);
+            let buf_1 = format!("{}ms [# paths: {}]  [# verts: {}] [sb @ {:?}] [scale @ {:?}]",
+                              time_ms, input_buffers.len(), verts, self.scanbox, self.scale);
 
             let buf_2 = format!("e = erase all, b = brush ({:?}), hue(i,o,p) => ({:02x},{:02x},{:02x})",
                                self.brush, hue_r, hue_g, hue_b);
@@ -366,7 +380,7 @@ impl Engine {
         for path in paths {
             let path_uni = uniform! {
                 ofs:   [-unit_ofs_x, -unit_ofs_y, 0.0f32],
-                scale: 1.0f32,
+                scale: self.scale,
             };
             
             // inflate each control point to six verts
@@ -374,7 +388,6 @@ impl Engine {
             target.draw(&path.buffer, &self.indices_tris, &self.path_program, &path_uni, &Default::default())
                 .expect("could not blit cursor example");
         }
-
     }
 
     fn world_to_unit(x: f64, y: f64) -> (f64, f64) {

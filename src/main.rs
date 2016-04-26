@@ -34,6 +34,5 @@ fn main() {
     println!("let me tell you a story...");
     let mut engine = Engine::new(display);
     engine.run();
-    
-    println!("<3"); // TODO: emoji heart because I can?!
+    println!("❤"); // TODO: emoji heart because I can?!
 }
