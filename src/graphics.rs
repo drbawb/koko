@@ -1,6 +1,6 @@
-use glium::backend::glutin_backend::GlutinFacade;
+//use glium::backend::glutin_backend::GlutinFacade;
 use glium::draw_parameters::DrawParameters;
-use glium::{self, texture, Surface};
+use glium::{self, backend::Facade, texture, Surface};
 use glium::uniforms::{MinifySamplerFilter, MagnifySamplerFilter, SamplerWrapFunction};
 
 use util;
@@ -34,7 +34,7 @@ impl TextBlitter {
     /// NOTE: currently only prints a subset of ASCII
     /// NOTE: requires `simple-font.tga` in working directory
     /// NOTE: will totally explode if you swap out other fonts
-    pub fn new(context: &mut GlutinFacade) -> Self {
+    pub fn new<F: Facade>(context: &mut F) -> Self {
         // simple square
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
         let shape = [
@@ -129,8 +129,6 @@ impl TextBlitter {
     }
 
     fn ascii_to_ofs(cp: char) -> (f32, f32) {
-        use std::ascii::AsciiExt;
-        
         assert!(cp.is_ascii());
         let sprite_ofs = match cp {
             'A'...'P' => (cp as u32 - 'A' as u32,      0),

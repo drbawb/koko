@@ -8,31 +8,21 @@ pub mod util;
 
 use engine::Engine;
 use glium::glutin;
-use glium::DisplayBuild;
 
 fn main() {
     println!("koko is starting up...");
-    let display = glutin::WindowBuilder::new()
+    let context    = glutin::ContextBuilder::new();
+    let mut events = glutin::EventsLoop::new();
+    let window     = glutin::WindowBuilder::new()
         .with_title(String::from("koko gl"))
-        .with_dimensions(1280, 720)
-        .build_glium();
+        .with_dimensions(glutin::dpi::LogicalSize::new(1280.0, 720.0));
 
-    let display = match display {
-        Ok(gl_ctx) => {
-            // set options on underlying glutin window ...
-            gl_ctx.get_window().map(|gl_win| {
-                gl_win.set_cursor_state(glutin::CursorState::Hide)
-                      .expect("could not set cursor state");
-            }); gl_ctx
-        },
-        Err(msg) => {
-            println!("glium init error: {}", msg);
-            panic!("koko could not initialize the graphics subsystem");
-        },
-    };
+    let display = glium::Display::new(window, context, &events)
+        .expect("could not initialize display ...");
+
 
     println!("let me tell you a story...");
     let mut engine = Engine::new(display);
-    engine.run();
+    engine.run(&mut events);
     println!("❤"); // TODO: emoji heart because I can?!
 }

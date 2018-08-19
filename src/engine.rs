@@ -2,9 +2,9 @@ use std::mem;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use glium::backend::glutin_backend::GlutinFacade;
-use glium::glutin::{ElementState, Event, VirtualKeyCode as KeyCode};
-use glium::{self, Surface, VertexBuffer};
+use glium::glutin::{DeviceEvent, WindowEvent, Event, EventsLoop};
+use glium::glutin::{ElementState, VirtualKeyCode as KeyCode};
+use glium::{self, Display, Surface, VertexBuffer};
 
 use graphics::{TextBlitter, Vert2};
 use input::Input;
@@ -43,7 +43,7 @@ struct ControlPoint {
 }
 
 impl ControlPath {
-    pub fn new(context: &GlutinFacade, scale: f32, scanbox: V2, points: Vec<ControlPoint>) -> ControlPath {
+    pub fn new(context: &Display, scale: f32, scanbox: V2, points: Vec<ControlPoint>) -> ControlPath {
         let vbuf_path = glium::VertexBuffer::empty_dynamic(context, points.len() * 6)
             .expect("could not alloc vbuf");
 
@@ -72,7 +72,7 @@ impl ControlPath {
     }
 
     // cleans up shop and prepares buffer for a draw call
-    pub fn draw(&mut self) {
+    pub fn draw(&mut self, dim: (u32, u32)) {
         if !self.needs_render { return; }
         self.needs_render = false;
 
@@ -80,10 +80,12 @@ impl ControlPath {
         let mut writer = self.buffer.map_write();
         let fudge_x = 7.5 / 1280.0;
         let fudge_y = 7.5 /  720.0;
+        let (win_x, win_y) = dim;
+        
         let mut ofs = 0;
         for point in &self.samples {
             let (wx, wy) = {
-                let adj_x = (point.screen_xy.0 as f32 / 360.0) * 720.0 / 1280.0;
+                let adj_x = (point.screen_xy.0 as f32 / 360.0) * win_y as f32 / win_x as f32;
                 let adj_y = (point.screen_xy.1 as f32 / 360.0) * 1.0;
 
                 let inv_scale = 1.0 / self.scale;
@@ -107,8 +109,9 @@ impl ControlPath {
 
 pub struct Engine {
     is_running: bool,
+    window_dim: (u32, u32),
 
-    context:    GlutinFacade,
+    context:    Display,
     controller: Input,
 
     indices_tris: glium::index::NoIndices,
@@ -123,7 +126,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(gl_ctx: GlutinFacade) -> Engine {
+    pub fn new(gl_ctx: Display) -> Engine {
 
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
         let indices_pts = glium::index::NoIndices(glium::index::PrimitiveType::Points);
@@ -140,6 +143,7 @@ impl Engine {
 
         Engine {
             is_running: true,
+            window_dim: (1280, 720), // TODO: init to actual window size
 
             context:    gl_ctx,
             controller: Input::new(),
@@ -156,7 +160,7 @@ impl Engine {
         }
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self, events: &mut EventsLoop) {
         let target_fps_ms = Duration::from_millis(1000 / 120); // TODO: const fn?
 
         let mut frame_start_at;
@@ -196,30 +200,83 @@ impl Engine {
             frame_start_at = Instant::now();
             self.controller.begin_new_frame();
 
+            // TODO: ick, callback based API
             // process platform events 
-            for evt in self.context.poll_events() { 
+            events.poll_events(|evt| {
                 match evt {
-                    Event::Closed => self.is_running = false,
-                    Event::KeyboardInput(ElementState::Pressed, _, Some(key)) => {
-                        self.controller.key_down_event(key);
+                    Event::WindowEvent { event, .. } => match event {
+                        WindowEvent::CloseRequested => self.is_running = false,
+                        WindowEvent::Resized(new_size) => {
+                            self.window_dim = (
+                                new_size.width  as u32,
+                                new_size.height as u32,
+                            );
+                        },
+
+                        WindowEvent::CursorMoved { position, .. } => {
+                            // TODO: nasty casts ...
+                            cursor_x = position.x as i64;
+                            cursor_y = position.y as i64; 
+                        },
+
+                        // TODO: actually check which button is being pushed
+                        WindowEvent::MouseInput { state: ElementState::Pressed, .. } => {
+                            cursor_down = true;
+                            cursor_commit = false;
+                        },
+
+                        WindowEvent::MouseInput { state: ElementState::Released, .. } => {
+                            cursor_down = false;
+                        },
+
+                        WindowEvent::KeyboardInput { input, .. } => {
+                            match (input.state, input.virtual_keycode) {
+                                (ElementState::Pressed, Some(key)) => {
+                                    self.controller.key_down_event(key);
+                                },
+
+                                (ElementState::Released, Some(key)) => {
+                                    self.controller.key_up_event(key);
+                                },
+
+                                _ => {},
+                            };
+                        },
+
+
+                        _ => {},
                     },
 
-                    Event::KeyboardInput(ElementState::Released, _, Some(key)) => {
-                        self.controller.key_up_event(key);
-                    },
 
-                    Event::MouseInput(ElementState::Pressed,  _)  => {
-                        cursor_down = true;
-                        cursor_commit = false;
-                    },
-
-                    Event::MouseInput(ElementState::Released, _)  => cursor_down = false,
-
-                    Event::MouseMoved(x,y) => { cursor_x = x; cursor_y = y },
-
-                    _ => (),
+                    _ => {},
                 }
-            }
+            });
+
+            // for evt in self.events.poll_events() { 
+            //     match evt {
+            //         Event::Closed       => self.is_running = false,
+            //         Event::Resized(w,h) => self.window_dim = (w,h),
+
+            //         Event::KeyboardInput(ElementState::Pressed, _, Some(key)) => {
+            //             self.controller.key_down_event(key);
+            //         },
+
+            //         Event::KeyboardInput(ElementState::Released, _, Some(key)) => {
+            //             self.controller.key_up_event(key);
+            //         },
+
+            //         Event::MouseInput(ElementState::Pressed,  _)  => {
+            //             cursor_down = true;
+            //             cursor_commit = false;
+            //         },
+
+            //         Event::MouseInput(ElementState::Released, _)  => cursor_down = false,
+
+            //         Event::MouseMoved(x,y) => { cursor_x = x; cursor_y = y },
+
+            //         _ => (),
+            //     }
+            // }
 
             // handle user keyboard input
             if self.controller.was_key_pressed(KeyCode::Escape) {
@@ -283,6 +340,7 @@ impl Engine {
             let (wx, wy) = Engine::world_to_unit(cursor_x as f64, cursor_y as f64);
             
             let cursor_uni = uniform! {
+                dim:   [self.window_dim.0 as f32, self.window_dim.1 as f32],
                 ofs:   [wx as f32, wy as f32, 0.0f32], 
                 scale: 0.15f32,
             };
@@ -384,7 +442,7 @@ impl Engine {
             };
             
             // inflate each control point to six verts
-            path.draw();
+            path.draw(self.window_dim);
             target.draw(&path.buffer, &self.indices_tris, &self.path_program, &path_uni, &Default::default())
                 .expect("could not blit cursor example");
         }

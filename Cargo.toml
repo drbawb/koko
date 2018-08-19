@@ -4,4 +4,4 @@ version = "0.2.1"
 authors = ["Robbie Straw <drbawb@fatalsyntax.com>"]
 
 [dependencies]
-glium = "*"
+glium = "0.22"
